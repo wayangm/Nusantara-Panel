@@ -87,7 +87,7 @@ func (s *Service) Start(ctx context.Context) (StartResult, error) {
 	}
 
 	cmdScript := fmt.Sprintf(
-		"set -euo pipefail; curl -fsSL %s -o /tmp/nusantara-install.sh; /bin/bash /tmp/nusantara-install.sh --repo %s --branch %s",
+		"set -euo pipefail; curl -fsSL %s | /bin/bash -s -- --repo %s --branch %s",
 		shellQuote(s.cfg.ScriptURL),
 		shellQuote(s.cfg.RepoURL),
 		shellQuote(s.cfg.Branch),
