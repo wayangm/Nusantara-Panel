@@ -78,6 +78,8 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /v1/sites", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleListSites)))
 	mux.Handle("POST /v1/sites", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleCreateSite)))
 	mux.Handle("GET /v1/sites/{siteID}", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleGetSite)))
+	mux.Handle("GET /v1/sites/{siteID}/content", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleGetSiteContent)))
+	mux.Handle("PUT /v1/sites/{siteID}/content", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleUpdateSiteContent)))
 	mux.Handle("DELETE /v1/sites/{siteID}", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleDeleteSite)))
 
 	mux.Handle("GET /v1/jobs", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleListJobs)))
@@ -267,6 +269,78 @@ func (a *API) handleGetSite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, site)
+}
+
+type updateSiteContentRequest struct {
+	File    string `json:"file"`
+	Content string `json:"content"`
+}
+
+func (a *API) handleGetSiteContent(w http.ResponseWriter, r *http.Request) {
+	siteID := r.PathValue("siteID")
+	file := r.URL.Query().Get("file")
+	site, name, content, err := a.sites.GetSiteContent(r.Context(), siteID, file)
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			writeError(w, http.StatusNotFound, "site or file not found")
+		case errors.Is(err, sitessvc.ErrInvalidFile):
+			writeError(w, http.StatusBadRequest, err.Error())
+		default:
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"site_id":   site.ID,
+		"domain":    site.Domain,
+		"root_path": site.RootPath,
+		"file":      name,
+		"size":      len(content),
+		"content":   content,
+	})
+}
+
+func (a *API) handleUpdateSiteContent(w http.ResponseWriter, r *http.Request) {
+	user, ok := r.Context().Value(principalContextKey{}).(store.User)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	siteID := r.PathValue("siteID")
+	var req updateSiteContentRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	site, name, size, err := a.sites.UpdateSiteContent(r.Context(), siteID, req.File, req.Content)
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			writeError(w, http.StatusNotFound, "site not found")
+		case errors.Is(err, sitessvc.ErrInvalidFile), errors.Is(err, sitessvc.ErrContentTooLong):
+			writeError(w, http.StatusBadRequest, err.Error())
+		default:
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+		return
+	}
+
+	a.audit.Record(r.Context(), user.ID, "site.content.update", "site", site.ID, map[string]any{
+		"file": name,
+		"size": size,
+	})
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":    "ok",
+		"site_id":   site.ID,
+		"domain":    site.Domain,
+		"root_path": site.RootPath,
+		"file":      name,
+		"size":      size,
+	})
 }
 
 func (a *API) handleDeleteSite(w http.ResponseWriter, r *http.Request) {

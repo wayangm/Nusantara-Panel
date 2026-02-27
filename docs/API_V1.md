@@ -95,6 +95,24 @@ Catatan:
 ### `GET /v1/sites/{site_id}`
 - Auth: admin
 
+### `GET /v1/sites/{site_id}/content`
+- Auth: admin
+- Query parameter opsional: `file` (`index.html`, `index.htm`, `index.php`)
+- Jika `file` kosong, panel memilih default berdasarkan runtime site.
+
+### `PUT /v1/sites/{site_id}/content`
+- Auth: admin
+Request:
+```json
+{
+  "file": "index.html",
+  "content": "<h1>Hello</h1>"
+}
+```
+Catatan:
+- File yang diizinkan sementara: `index.html`, `index.htm`, `index.php`.
+- Batas ukuran content: 1 MiB.
+
 ### `DELETE /v1/sites/{site_id}`
 - Auth: admin
 Catatan:

@@ -1,6 +1,12 @@
-﻿package sites
+package sites
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"nusantara/internal/store"
+)
 
 func TestIsValidDomain(t *testing.T) {
 	cases := []struct {
@@ -36,3 +42,44 @@ func TestIsValidRootPath(t *testing.T) {
 	}
 }
 
+func TestResolveEditableFileDefaultsByRuntime(t *testing.T) {
+	sitePHP := store.Site{Runtime: "php", RootPath: t.TempDir()}
+	file, err := resolveEditableFile(sitePHP, "", false)
+	if err != nil {
+		t.Fatalf("resolve php default: %v", err)
+	}
+	if file != "index.php" {
+		t.Fatalf("expected index.php, got %s", file)
+	}
+
+	siteStatic := store.Site{Runtime: "static", RootPath: t.TempDir()}
+	file, err = resolveEditableFile(siteStatic, "", false)
+	if err != nil {
+		t.Fatalf("resolve static default: %v", err)
+	}
+	if file != "index.html" {
+		t.Fatalf("expected index.html, got %s", file)
+	}
+}
+
+func TestResolveEditableFileRejectsInvalidName(t *testing.T) {
+	site := store.Site{Runtime: "php", RootPath: t.TempDir()}
+	if _, err := resolveEditableFile(site, "app.js", false); err == nil {
+		t.Fatalf("expected invalid file error")
+	}
+}
+
+func TestResolveEditableFilePrefersExistingIndex(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "index.htm"), []byte("ok"), 0o644); err != nil {
+		t.Fatalf("seed index.htm: %v", err)
+	}
+	site := store.Site{Runtime: "static", RootPath: root}
+	file, err := resolveEditableFile(site, "", true)
+	if err != nil {
+		t.Fatalf("resolve existing: %v", err)
+	}
+	if file != "index.htm" {
+		t.Fatalf("expected existing index.htm, got %s", file)
+	}
+}

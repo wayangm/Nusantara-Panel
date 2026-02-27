@@ -65,6 +65,8 @@ Endpoint utama:
 - `GET /v1/auth/me`
 - `GET /v1/sites`
 - `POST /v1/sites`
+- `GET /v1/sites/{site_id}/content`
+- `PUT /v1/sites/{site_id}/content`
 - `GET /v1/jobs`
 - `GET /v1/db/databases`
 - `POST /v1/db/databases`
@@ -164,6 +166,7 @@ Sudah tersedia:
 - endpoint `change-password`.
 - login rate limiting (anti brute-force basic).
 - CRUD site dasar (create/list/get/delete async deprovision).
+- File editor dasar site (`GET/PUT /v1/sites/{site_id}/content`) untuk file `index.html`, `index.htm`, `index.php`.
 - job worker async (queued -> running -> success/failed).
 - provisioning Nginx untuk `create site`:
   - render `server` config ke `sites-available`,

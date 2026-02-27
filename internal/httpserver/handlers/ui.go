@@ -234,6 +234,26 @@ const uiHTML = `<!doctype html>
       </section>
 
       <section class="card">
+        <h2>Site File Editor</h2>
+        <p>Edit index file for an active site.</p>
+        <label>Site ID</label>
+        <input id="fileSiteID" placeholder="site_xxx">
+        <label>File</label>
+        <select id="fileName">
+          <option value="index.html">index.html</option>
+          <option value="index.php">index.php</option>
+          <option value="index.htm">index.htm</option>
+        </select>
+        <label>Content</label>
+        <textarea id="fileContent" placeholder="Write file content here..."></textarea>
+        <p id="fileMeta">Select a site from Sites Explorer to start editing.</p>
+        <div class="row">
+          <button class="alt" id="btnLoadFile">GET /v1/sites/{id}/content</button>
+          <button id="btnSaveFile">PUT /v1/sites/{id}/content</button>
+        </div>
+      </section>
+
+      <section class="card">
         <h2>Sites Explorer</h2>
         <p id="sitesMeta">Login to load sites list.</p>
         <div class="row">
@@ -263,6 +283,10 @@ const uiHTML = `<!doctype html>
       var rootPathInput = document.getElementById('rootPath');
       var sslDomainInput = document.getElementById('sslDomain');
       var sslEmailInput = document.getElementById('sslEmail');
+      var fileSiteIDInput = document.getElementById('fileSiteID');
+      var fileNameInput = document.getElementById('fileName');
+      var fileContentInput = document.getElementById('fileContent');
+      var fileMeta = document.getElementById('fileMeta');
       var updateState = document.getElementById('updateState');
       var updateMeta = document.getElementById('updateMeta');
       var updateCheckMeta = document.getElementById('updateCheckMeta');
@@ -299,6 +323,7 @@ const uiHTML = `<!doctype html>
           updateCheckMeta.textContent = 'Login as admin to check for updates.';
           sitesMeta.textContent = 'Login to load sites list.';
           sitesList.innerHTML = '<div class="site-row"><div class="muted">No data loaded.</div></div>';
+          fileMeta.textContent = 'Login to use file editor.';
         }
       }
 
@@ -320,6 +345,16 @@ const uiHTML = `<!doctype html>
         var clean = normalizeDomain(domain);
         if (!clean) return '/var/www/example.com/public';
         return '/var/www/' + clean + '/public';
+      }
+
+      function defaultFileByRuntime(runtime) {
+        return String(runtime || '').toLowerCase() === 'php' ? 'index.php' : 'index.html';
+      }
+
+      function selectSiteForEditor(siteID, runtime, domain) {
+        fileSiteIDInput.value = String(siteID || '').trim();
+        fileNameInput.value = defaultFileByRuntime(runtime);
+        fileMeta.textContent = 'Selected site ' + fileSiteIDInput.value + ' (' + (domain || '-') + ')';
       }
 
       function startUpdatePolling() {
@@ -375,6 +410,7 @@ const uiHTML = `<!doctype html>
               '</div>' +
               '<div>' +
                 '<button class="mini alt" data-ssl-domain="' + escapeHtml(site.domain) + '">Use SSL</button>' +
+                '<button class="mini alt" data-edit-site="' + escapeHtml(site.id) + '" data-site-runtime="' + escapeHtml(site.runtime) + '" data-site-domain="' + escapeHtml(site.domain) + '">Edit Index</button>' +
                 '<button class="mini" data-delete-site="' + escapeHtml(site.id) + '">Delete</button>' +
               '</div>' +
             '</div>';
@@ -489,6 +525,9 @@ const uiHTML = `<!doctype html>
           sitesMeta.textContent = 'Sites loaded: ' + items.length + ' (auto-refresh every 8s)';
           if (items.length > 0 && !normalizeDomain(sslDomainInput.value)) {
             sslDomainInput.value = normalizeDomain(items[0].domain);
+          }
+          if (items.length > 0 && !String(fileSiteIDInput.value || '').trim()) {
+            selectSiteForEditor(items[0].id, items[0].runtime, items[0].domain);
           }
           return payload;
         } catch (err) {
@@ -632,6 +671,41 @@ const uiHTML = `<!doctype html>
         });
       });
 
+      document.getElementById('btnLoadFile').addEventListener('click', function () {
+        var siteID = String(fileSiteIDInput.value || '').trim();
+        if (!siteID) {
+          out.textContent = 'File editor: site ID is required.';
+          return;
+        }
+        var fileName = String(fileNameInput.value || '').trim();
+        callAPI('/v1/sites/' + encodeURIComponent(siteID) + '/content?file=' + encodeURIComponent(fileName), 'GET', null, true).then(function (payload) {
+          if (payload && typeof payload.content === 'string') {
+            fileContentInput.value = payload.content;
+            fileMeta.textContent = 'Loaded ' + (payload.file || fileName) + ' from ' + (payload.domain || siteID) + ' (' + (payload.size || 0) + ' bytes)';
+          }
+        }).catch(function (err) {
+          out.textContent = 'Request failed: ' + err;
+        });
+      });
+
+      document.getElementById('btnSaveFile').addEventListener('click', function () {
+        var siteID = String(fileSiteIDInput.value || '').trim();
+        if (!siteID) {
+          out.textContent = 'File editor: site ID is required.';
+          return;
+        }
+        callAPI('/v1/sites/' + encodeURIComponent(siteID) + '/content', 'PUT', {
+          file: fileNameInput.value,
+          content: fileContentInput.value
+        }, true).then(function (payload) {
+          if (payload && payload.status === 'ok') {
+            fileMeta.textContent = 'Saved ' + (payload.file || fileNameInput.value) + ' (' + (payload.size || 0) + ' bytes)';
+          }
+        }).catch(function (err) {
+          out.textContent = 'Request failed: ' + err;
+        });
+      });
+
       sitesList.addEventListener('click', function (evt) {
         var target = evt.target;
         if (!target || !target.getAttribute) return;
@@ -639,6 +713,11 @@ const uiHTML = `<!doctype html>
         if (sslDomain) {
           sslDomainInput.value = normalizeDomain(sslDomain);
           out.textContent = 'SSL domain selected: ' + sslDomainInput.value;
+          return;
+        }
+        var editSite = target.getAttribute('data-edit-site');
+        if (editSite) {
+          selectSiteForEditor(editSite, target.getAttribute('data-site-runtime'), target.getAttribute('data-site-domain'));
           return;
         }
         var siteID = target.getAttribute('data-delete-site');

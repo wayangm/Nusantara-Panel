@@ -63,6 +63,21 @@ ls -l /etc/nginx/sites-enabled
 2. Poll job sampai `success`.
 3. Verifikasi file config sudah terhapus dari Nginx directories.
 
+## 5b. Edit file index site tanpa SSH
+Load file:
+```bash
+curl -sS "http://127.0.0.1:8080/v1/sites/<SITE_ID>/content?file=index.html" \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+Save file:
+```bash
+curl -sS -X PUT http://127.0.0.1:8080/v1/sites/<SITE_ID>/content \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"file":"index.html","content":"<h1>Updated content</h1>"}'
+```
+
 ## 6. Database provisioning
 List database:
 ```bash

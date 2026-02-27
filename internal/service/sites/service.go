@@ -1,9 +1,12 @@
-﻿package sites
+package sites
 
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -17,6 +20,8 @@ var (
 	ErrInvalidDomain  = errors.New("invalid domain")
 	ErrInvalidRoot    = errors.New("invalid root_path")
 	ErrInvalidRuntime = errors.New("invalid runtime")
+	ErrInvalidFile    = errors.New("invalid file")
+	ErrContentTooLong = errors.New("content too long")
 )
 
 var domainRegex = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
@@ -27,6 +32,14 @@ var allowedRuntime = map[string]struct{}{
 	"python": {},
 	"static": {},
 }
+
+var editableFiles = map[string]struct{}{
+	"index.html": {},
+	"index.htm":  {},
+	"index.php":  {},
+}
+
+const maxSiteContentBytes = 1024 * 1024 // 1 MiB
 
 type Service struct {
 	repo   store.Repository
@@ -121,6 +134,51 @@ func (s *Service) DeleteSite(ctx context.Context, actorID, id string) (store.Job
 	return job, nil
 }
 
+func (s *Service) GetSiteContent(ctx context.Context, id, file string) (store.Site, string, string, error) {
+	site, err := s.repo.GetSiteByID(ctx, id)
+	if err != nil {
+		return store.Site{}, "", "", err
+	}
+
+	name, err := resolveEditableFile(site, file, true)
+	if err != nil {
+		return store.Site{}, "", "", err
+	}
+	fullPath := filepath.Join(site.RootPath, name)
+	b, err := os.ReadFile(fullPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return store.Site{}, "", "", store.ErrNotFound
+		}
+		return store.Site{}, "", "", fmt.Errorf("read file: %w", err)
+	}
+	return site, name, string(b), nil
+}
+
+func (s *Service) UpdateSiteContent(ctx context.Context, id, file, content string) (store.Site, string, int, error) {
+	site, err := s.repo.GetSiteByID(ctx, id)
+	if err != nil {
+		return store.Site{}, "", 0, err
+	}
+	if len(content) > maxSiteContentBytes {
+		return store.Site{}, "", 0, ErrContentTooLong
+	}
+
+	name, err := resolveEditableFile(site, file, false)
+	if err != nil {
+		return store.Site{}, "", 0, err
+	}
+	if err := os.MkdirAll(site.RootPath, 0o755); err != nil {
+		return store.Site{}, "", 0, fmt.Errorf("ensure site root: %w", err)
+	}
+
+	fullPath := filepath.Join(site.RootPath, name)
+	if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+		return store.Site{}, "", 0, fmt.Errorf("write file: %w", err)
+	}
+	return site, name, len(content), nil
+}
+
 func normalizeDomain(in string) string {
 	return strings.ToLower(strings.TrimSpace(strings.TrimSuffix(in, ".")))
 }
@@ -158,3 +216,38 @@ func isValidRootPath(rootPath string) bool {
 	return !strings.Contains(clean, "..")
 }
 
+func resolveEditableFile(site store.Site, file string, preferExisting bool) (string, error) {
+	name := strings.TrimSpace(strings.ToLower(file))
+	if name != "" {
+		if _, ok := editableFiles[name]; !ok {
+			return "", ErrInvalidFile
+		}
+		return name, nil
+	}
+
+	if preferExisting {
+		for _, candidate := range fileCandidatesByRuntime(site.Runtime) {
+			fullPath := filepath.Join(site.RootPath, candidate)
+			if _, err := os.Stat(fullPath); err == nil {
+				return candidate, nil
+			}
+		}
+	}
+	return defaultEditableFile(site.Runtime), nil
+}
+
+func defaultEditableFile(runtimeName string) string {
+	switch strings.ToLower(strings.TrimSpace(runtimeName)) {
+	case "php":
+		return "index.php"
+	default:
+		return "index.html"
+	}
+}
+
+func fileCandidatesByRuntime(runtimeName string) []string {
+	if strings.ToLower(strings.TrimSpace(runtimeName)) == "php" {
+		return []string{"index.php", "index.html", "index.htm"}
+	}
+	return []string{"index.html", "index.htm", "index.php"}
+}

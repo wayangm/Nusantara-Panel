@@ -39,14 +39,29 @@ curl -sS -X DELETE http://127.0.0.1:8080/v1/sites/<SITE_ID> \
   -H "Authorization: Bearer <TOKEN>"
 ```
 
-## 6. Lihat job, audit, dan monitor
+## 6. Edit konten index site tanpa SSH
+Load file:
+```bash
+curl -sS "http://127.0.0.1:8080/v1/sites/<SITE_ID>/content?file=index.html" \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+Simpan file:
+```bash
+curl -sS -X PUT http://127.0.0.1:8080/v1/sites/<SITE_ID>/content \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"file":"index.html","content":"<h1>Updated from API</h1>"}'
+```
+
+## 7. Lihat job, audit, dan monitor
 ```bash
 curl -sS http://127.0.0.1:8080/v1/jobs -H "Authorization: Bearer <TOKEN>"
 curl -sS http://127.0.0.1:8080/v1/audit/logs -H "Authorization: Bearer <TOKEN>"
 curl -sS http://127.0.0.1:8080/v1/monitor/services -H "Authorization: Bearer <TOKEN>"
 ```
 
-## 7. Issue SSL
+## 8. Issue SSL
 ```bash
 curl -sS -X POST http://127.0.0.1:8080/v1/ssl/issue \
   -H "Authorization: Bearer <TOKEN>" \
@@ -54,7 +69,7 @@ curl -sS -X POST http://127.0.0.1:8080/v1/ssl/issue \
   -d '{"domain":"example.com","email":"admin@example.com"}'
 ```
 
-## 8. Database create + user grant
+## 9. Database create + user grant
 ```bash
 curl -sS -X POST http://127.0.0.1:8080/v1/db/databases \
   -H "Authorization: Bearer <TOKEN>" \
@@ -67,7 +82,7 @@ curl -sS -X POST http://127.0.0.1:8080/v1/db/users \
   -d '{"database":"app_db","username":"app_user","password":"StrongPass123","host":"localhost"}'
 ```
 
-## 9. Run backup snapshot
+## 10. Run backup snapshot
 ```bash
 curl -sS -X POST http://127.0.0.1:8080/v1/backup/run \
   -H "Authorization: Bearer <TOKEN>"
