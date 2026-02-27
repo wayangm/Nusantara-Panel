@@ -96,7 +96,6 @@ func (s *Service) Start(ctx context.Context) (StartResult, error) {
 	cmd := exec.CommandContext(
 		ctx,
 		"systemd-run",
-		"--replace",
 		"--unit",
 		s.cfg.UnitName,
 		"--property=Type=oneshot",
@@ -107,7 +106,27 @@ func (s *Service) Start(ctx context.Context) (StartResult, error) {
 	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return StartResult{}, fmt.Errorf("start updater unit: %w: %s", err, strings.TrimSpace(string(output)))
+		raw := strings.TrimSpace(string(output))
+		if strings.Contains(strings.ToLower(raw), "already exists") {
+			s.cleanupUnit(ctx)
+			cmdRetry := exec.CommandContext(
+				ctx,
+				"systemd-run",
+				"--unit",
+				s.cfg.UnitName,
+				"--property=Type=oneshot",
+				"--property=RemainAfterExit=yes",
+				"/bin/bash",
+				"-lc",
+				cmdScript,
+			)
+			retryOut, retryErr := cmdRetry.CombinedOutput()
+			if retryErr != nil {
+				return StartResult{}, fmt.Errorf("start updater unit: %w: %s", retryErr, strings.TrimSpace(string(retryOut)))
+			}
+		} else {
+			return StartResult{}, fmt.Errorf("start updater unit: %w: %s", err, raw)
+		}
 	}
 
 	s.logf("panel updater started unit=%s", s.unitServiceName())
@@ -255,6 +274,14 @@ func (s *Service) logs(ctx context.Context) ([]string, error) {
 		out = append(out, line)
 	}
 	return out, nil
+}
+
+func (s *Service) cleanupUnit(ctx context.Context) {
+	ctxCleanup, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	_, _ = exec.CommandContext(ctxCleanup, "systemctl", "stop", s.unitServiceName()).CombinedOutput()
+	_, _ = exec.CommandContext(ctxCleanup, "systemctl", "reset-failed", s.unitServiceName()).CombinedOutput()
 }
 
 func (s *Service) unitServiceName() string {
