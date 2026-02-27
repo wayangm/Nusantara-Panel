@@ -37,6 +37,10 @@ curl -sS http://127.0.0.1:8080/healthz
 curl -sS http://127.0.0.1:8080/v1/system/compatibility
 ```
 
+UI preview:
+- `http://<IP_VPS>:8080/`
+- `http://<IP_VPS>:8080/ui`
+
 ## 3. First login
 - Bootstrap username: `admin`
 - Bootstrap password: output installer

@@ -2,6 +2,7 @@
 
 import (
 	"net/http"
+	"strings"
 
 	"nusantara/internal/httpserver/handlers"
 	"nusantara/internal/platform/oscheck"
@@ -10,6 +11,8 @@ import (
 func NewRouter(osResult oscheck.Result, api *API) http.Handler {
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("GET /", handlers.WebUI)
+	mux.HandleFunc("GET /ui", handlers.WebUI)
 	mux.HandleFunc("GET /healthz", handlers.Health)
 	mux.Handle("GET /v1/system/compatibility", handlers.SystemCompatibility(osResult))
 	api.RegisterRoutes(mux)
@@ -19,7 +22,9 @@ func NewRouter(osResult oscheck.Result, api *API) http.Handler {
 
 func withJSONContentType(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if strings.HasPrefix(r.URL.Path, "/v1/") || r.URL.Path == "/healthz" {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		}
 		next.ServeHTTP(w, r)
 	})
 }

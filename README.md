@@ -50,6 +50,8 @@ Ganti lewat env:
 
 Endpoint utama:
 - `GET /healthz`
+- `GET /` (Web UI preview)
+- `GET /ui` (Web UI preview)
 - `GET /v1/system/compatibility`
 - `POST /v1/auth/login`
 - `POST /v1/auth/change-password`
@@ -113,6 +115,10 @@ systemctl status nusantara-panel
 curl http://127.0.0.1:8080/healthz
 ```
 4. Simpan bootstrap password yang muncul di output installer, login ke API, lalu segera ganti password.
+5. Buka UI preview di browser:
+```bash
+http://<IP_VPS>:8080/
+```
 
 Installer akan menyiapkan paket host:
 - nginx
