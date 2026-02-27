@@ -73,6 +73,34 @@ const uiHTML = `<!doctype html>
     }
     .ok { color: #047857; }
     .bad { color: var(--danger); }
+    .pill {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-top: 4px;
+      background: #e2e8f0;
+      color: #334155;
+    }
+    .pill.ok { background: #dcfce7; color: #166534; }
+    .pill.run { background: #dbeafe; color: #1d4ed8; }
+    .pill.err { background: #fee2e2; color: #b91c1c; }
+    .bar {
+      margin-top: 10px;
+      width: 100%;
+      height: 10px;
+      background: #e2e8f0;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .bar > i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #0d9488, #0369a1);
+      transition: width .25s ease;
+    }
   </style>
 </head>
 <body>
@@ -110,6 +138,9 @@ const uiHTML = `<!doctype html>
       <section class="card">
         <h2>Panel Update</h2>
         <p>Run update without SSH (admin only).</p>
+        <div id="updateState" class="pill">Unknown</div>
+        <div class="bar"><i id="updateProgress"></i></div>
+        <p id="updateMeta">Click status to load current updater state.</p>
         <div class="row">
           <button id="btnStartUpdate">POST /v1/panel/update</button>
           <button class="alt" id="btnUpdateStatus">GET /v1/panel/update/status</button>
@@ -146,7 +177,12 @@ const uiHTML = `<!doctype html>
       var out = document.getElementById('out');
       var tokenBox = document.getElementById('token');
       var authStatus = document.getElementById('authStatus');
+      var updateState = document.getElementById('updateState');
+      var updateMeta = document.getElementById('updateMeta');
+      var updateProgress = document.getElementById('updateProgress');
+      var btnStartUpdate = document.getElementById('btnStartUpdate');
       var token = localStorage.getItem('nusantara_token') || '';
+      var updatePollTimer = null;
 
       function setToken(next) {
         token = (next || '').trim();
@@ -155,19 +191,87 @@ const uiHTML = `<!doctype html>
           tokenBox.textContent = token;
           authStatus.textContent = 'Authenticated';
           authStatus.className = 'ok';
+          fetchUpdateStatus(true);
+          startUpdatePolling();
         } else {
           localStorage.removeItem('nusantara_token');
           tokenBox.textContent = '(empty)';
           authStatus.textContent = 'Not authenticated';
           authStatus.className = 'bad';
+          stopUpdatePolling();
+          setUpdateState('Not authenticated', 'err', 0);
+          updateMeta.textContent = 'Login as admin to use panel update.';
         }
+      }
+
+      function setUpdateState(label, kind, progress) {
+        updateState.textContent = label;
+        updateState.className = 'pill ' + (kind || '');
+        updateProgress.style.width = String(Math.max(0, Math.min(100, progress || 0))) + '%';
       }
 
       function pretty(data) {
         try { return JSON.stringify(data, null, 2); } catch (_) { return String(data); }
       }
 
-      async function callAPI(path, method, body, needAuth) {
+      function startUpdatePolling() {
+        if (updatePollTimer) return;
+        updatePollTimer = setInterval(function () {
+          fetchUpdateStatus(true);
+        }, 4000);
+      }
+
+      function stopUpdatePolling() {
+        if (!updatePollTimer) return;
+        clearInterval(updatePollTimer);
+        updatePollTimer = null;
+      }
+
+      function applyUpdateStatus(st) {
+        if (!st || typeof st !== 'object') return;
+        var label = 'Unknown';
+        var kind = '';
+        var progress = 10;
+        if (st.running) {
+          label = 'Updating';
+          kind = 'run';
+          progress = 60;
+        } else if (st.success) {
+          label = 'Success';
+          kind = 'ok';
+          progress = 100;
+        } else if (st.failed) {
+          label = 'Failed';
+          kind = 'err';
+          progress = 100;
+        } else if (st.exists) {
+          label = (st.active_state || 'idle') + '/' + (st.sub_state || '-');
+          kind = '';
+          progress = 30;
+        }
+        setUpdateState(label, kind, progress);
+        updateMeta.textContent = 'unit=' + (st.unit || '-') + ' active=' + (st.active_state || '-') + ' result=' + (st.result || '-');
+        btnStartUpdate.disabled = !!st.running;
+      }
+
+      async function fetchUpdateStatus(silent) {
+        if (!token) return null;
+        try {
+          var st = await callAPI('/v1/panel/update/status', 'GET', null, true, !!silent);
+          applyUpdateStatus(st);
+          return st;
+        } catch (err) {
+          if (!silent) {
+            out.textContent = 'Request failed: ' + err;
+          } else {
+            setUpdateState('Reconnecting', 'run', 75);
+            updateMeta.textContent = 'Panel may be restarting...';
+          }
+          return null;
+        }
+      }
+
+      async function callAPI(path, method, body, needAuth, silent) {
         var headers = { 'Content-Type': 'application/json' };
         if (needAuth && token) {
           headers.Authorization = 'Bearer ' + token;
@@ -179,7 +283,9 @@ const uiHTML = `<!doctype html>
         var res = await fetch(path, opts);
         var ct = res.headers.get('content-type') || '';
         var payload = ct.indexOf('application/json') >= 0 ? await res.json() : await res.text();
-        out.textContent = 'HTTP ' + res.status + '\n' + pretty(payload);
+        if (!silent) {
+          out.textContent = 'HTTP ' + res.status + '\n' + pretty(payload);
+        }
         return payload;
       }
 
@@ -231,13 +337,23 @@ const uiHTML = `<!doctype html>
           out.textContent = 'Request failed: ' + err;
         });
       });
-      document.getElementById('btnStartUpdate').addEventListener('click', function () {
-        callAPI('/v1/panel/update', 'POST', {}, true).catch(function (err) {
+      document.getElementById('btnStartUpdate').addEventListener('click', async function () {
+        try {
+          var payload = await callAPI('/v1/panel/update', 'POST', {}, true);
+          if (payload && payload.update_status) {
+            applyUpdateStatus(payload.update_status);
+          } else {
+            setUpdateState('Triggered', 'run', 40);
+            updateMeta.textContent = 'Updater job submitted. Polling status...';
+            fetchUpdateStatus(true);
+          }
+          startUpdatePolling();
+        } catch (err) {
           out.textContent = 'Request failed: ' + err;
-        });
+        }
       });
       document.getElementById('btnUpdateStatus').addEventListener('click', function () {
-        callAPI('/v1/panel/update/status', 'GET', null, true).catch(function (err) {
+        fetchUpdateStatus(false).catch(function (err) {
           out.textContent = 'Request failed: ' + err;
         });
       });
