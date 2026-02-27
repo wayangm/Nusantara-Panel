@@ -29,6 +29,7 @@ const (
 	defaultUpdateScriptURL        = "https://raw.githubusercontent.com/wayangm/Nusantara-Panel/main/install.sh"
 	defaultUpdateUnitName         = "nusantara-panel-updater"
 	defaultUpdateLogLines         = 80
+	defaultUpdateCooldownSecs     = 20
 )
 
 type Config struct {
@@ -56,6 +57,7 @@ type Config struct {
 	UpdateScriptURL string
 	UpdateUnitName  string
 	UpdateLogLines  int
+	UpdateCooldown  int
 }
 
 func LoadFromEnv() (Config, error) {
@@ -82,6 +84,7 @@ func LoadFromEnv() (Config, error) {
 		UpdateScriptURL:        getenv("NUSANTARA_UPDATE_SCRIPT_URL", defaultUpdateScriptURL),
 		UpdateUnitName:         getenv("NUSANTARA_UPDATE_UNIT_NAME", defaultUpdateUnitName),
 		UpdateLogLines:         defaultUpdateLogLines,
+		UpdateCooldown:         defaultUpdateCooldownSecs,
 	}
 
 	if v := os.Getenv("NUSANTARA_SHUTDOWN_SECS"); v != "" {
@@ -122,6 +125,14 @@ func LoadFromEnv() (Config, error) {
 			return Config{}, fmt.Errorf("invalid NUSANTARA_UPDATE_LOG_LINES: %q", v)
 		}
 		cfg.UpdateLogLines = lines
+	}
+
+	if v := os.Getenv("NUSANTARA_UPDATE_COOLDOWN_SECS"); v != "" {
+		secs, err := strconv.Atoi(v)
+		if err != nil || secs < 0 {
+			return Config{}, fmt.Errorf("invalid NUSANTARA_UPDATE_COOLDOWN_SECS: %q", v)
+		}
+		cfg.UpdateCooldown = secs
 	}
 
 	cfg.DBPath = getenv("NUSANTARA_DB_PATH", filepath.Join(cfg.DataDir, "nusantara_state.json"))

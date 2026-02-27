@@ -16,6 +16,7 @@ import (
 var (
 	ErrDisabled       = errors.New("panel updater is disabled")
 	ErrAlreadyRunning = errors.New("panel updater is already running")
+	ErrCooldown       = errors.New("panel updater cooldown is active")
 	ErrInvalidConfig  = errors.New("invalid panel updater config")
 )
 
@@ -30,6 +31,7 @@ type Config struct {
 	ScriptURL string
 	UnitName  string
 	LogLines  int
+	Cooldown  int
 }
 
 type Service struct {
@@ -84,6 +86,11 @@ func (s *Service) Start(ctx context.Context) (StartResult, error) {
 	status, err := s.Status(ctx)
 	if err == nil && status.Exists && status.Running {
 		return StartResult{}, ErrAlreadyRunning
+	}
+	if err == nil && s.cfg.Cooldown > 0 {
+		if wait := s.cooldownWait(status, time.Now().UTC()); wait > 0 {
+			return StartResult{}, fmt.Errorf("%w: wait %ds", ErrCooldown, wait)
+		}
 	}
 
 	cmdScript := fmt.Sprintf(
@@ -207,7 +214,33 @@ func (s *Service) validateConfig() error {
 	if !unitNameRe.MatchString(s.cfg.UnitName) {
 		return fmt.Errorf("%w: invalid unit name", ErrInvalidConfig)
 	}
+	if s.cfg.Cooldown < 0 {
+		return fmt.Errorf("%w: invalid cooldown", ErrInvalidConfig)
+	}
 	return nil
+}
+
+func (s *Service) cooldownWait(st Status, now time.Time) int {
+	if !st.Exists || st.Running {
+		return 0
+	}
+	ts := strings.TrimSpace(st.StateChangeTimestamp)
+	if ts == "" || strings.EqualFold(ts, "n/a") {
+		return 0
+	}
+	parsed, err := time.Parse("Mon 2006-01-02 15:04:05 MST", ts)
+	if err != nil {
+		return 0
+	}
+	elapsed := now.Sub(parsed)
+	if elapsed < 0 {
+		return s.cfg.Cooldown
+	}
+	remaining := s.cfg.Cooldown - int(elapsed.Seconds())
+	if remaining > 0 {
+		return remaining
+	}
+	return 0
 }
 
 func (s *Service) showUnit(ctx context.Context) (map[string]string, error) {

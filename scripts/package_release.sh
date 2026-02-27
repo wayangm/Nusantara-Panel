@@ -16,6 +16,9 @@ if [[ -z "${VERSION}" ]]; then
   exit 1
 fi
 
+BUILD_COMMIT="$(git -C "${ROOT_DIR}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
 if ! command -v go >/dev/null 2>&1; then
   echo "Go is required to build release artifacts"
   exit 1
@@ -31,8 +34,9 @@ build_target() {
   local binary="${outdir}/nusantarad"
 
   mkdir -p "${outdir}" "${outdir}/deploy/systemd" "${outdir}/configs" "${outdir}/scripts"
+  local ldflags="-s -w -X nusantara/internal/buildinfo.Version=v${VERSION} -X nusantara/internal/buildinfo.Commit=${BUILD_COMMIT} -X nusantara/internal/buildinfo.BuildTime=${BUILD_TIME}"
   GOOS="${goos}" GOARCH="${goarch}" CGO_ENABLED=0 \
-    go build -trimpath -ldflags="-s -w" -o "${binary}" ./cmd/nusantarad
+    go build -trimpath -ldflags="${ldflags}" -o "${binary}" ./cmd/nusantarad
 
   cp "${ROOT_DIR}/configs/nusantara-panel.env.example" "${outdir}/nusantara-panel.env.example"
   cp "${ROOT_DIR}/configs/nusantara-panel.env.example" "${outdir}/configs/nusantara-panel.env.example"

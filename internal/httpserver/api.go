@@ -16,6 +16,7 @@ import (
 
 	"nusantara/internal/audit"
 	backupsvc "nusantara/internal/backup"
+	"nusantara/internal/buildinfo"
 	dbsvc "nusantara/internal/db"
 	"nusantara/internal/jobs"
 	"nusantara/internal/monitor"
@@ -93,6 +94,7 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 
 	mux.Handle("GET /v1/monitor/host", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleMonitorHost)))
 	mux.Handle("GET /v1/monitor/services", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleMonitorServices)))
+	mux.Handle("GET /v1/panel/version", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handlePanelVersion)))
 	mux.Handle("POST /v1/panel/update", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleStartPanelUpdate)))
 	mux.Handle("GET /v1/panel/update/status", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handlePanelUpdateStatus)))
 }
@@ -576,6 +578,16 @@ func (a *API) handleMonitorServices(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *API) handlePanelVersion(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"version":    buildinfo.Version,
+		"commit":     buildinfo.Commit,
+		"build_time": buildinfo.BuildTime,
+		"go_version": runtime.Version(),
+		"timestamp":  time.Now().UTC(),
+	})
+}
+
 func (a *API) handleStartPanelUpdate(w http.ResponseWriter, r *http.Request) {
 	user, ok := r.Context().Value(principalContextKey{}).(store.User)
 	if !ok {
@@ -596,6 +608,8 @@ func (a *API) handleStartPanelUpdate(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, updater.ErrAlreadyRunning):
 			writeJSON(w, http.StatusConflict, mergeErrorPayload("panel update is already running", statusPayload))
+		case errors.Is(err, updater.ErrCooldown):
+			writeJSON(w, http.StatusTooManyRequests, mergeErrorPayload(err.Error(), statusPayload))
 		case errors.Is(err, updater.ErrDisabled):
 			writeJSON(w, http.StatusBadRequest, mergeErrorPayload("panel updater is disabled", statusPayload))
 		default:

@@ -139,6 +139,12 @@ curl -sS http://127.0.0.1:8080/v1/panel/update/status \
   -H "Authorization: Bearer <TOKEN>"
 ```
 
+Cek versi panel terpasang:
+```bash
+curl -sS http://127.0.0.1:8080/v1/panel/version \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
 
 
 

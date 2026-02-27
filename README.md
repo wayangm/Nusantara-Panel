@@ -53,6 +53,7 @@ Ganti lewat env:
 - `NUSANTARA_UPDATE_SCRIPT_URL`
 - `NUSANTARA_UPDATE_UNIT_NAME`
 - `NUSANTARA_UPDATE_LOG_LINES`
+- `NUSANTARA_UPDATE_COOLDOWN_SECS`
 
 Endpoint utama:
 - `GET /healthz`
@@ -75,6 +76,7 @@ Endpoint utama:
 - `GET /v1/audit/logs`
 - `POST /v1/panel/update`
 - `GET /v1/panel/update/status`
+- `GET /v1/panel/version`
 
 ## Build cepat
 ```bash

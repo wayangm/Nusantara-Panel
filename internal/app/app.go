@@ -106,6 +106,7 @@ func (a *App) Run() error {
 		ScriptURL: a.cfg.UpdateScriptURL,
 		UnitName:  a.cfg.UpdateUnitName,
 		LogLines:  a.cfg.UpdateLogLines,
+		Cooldown:  a.cfg.UpdateCooldown,
 	}, a.logger)
 	api := httpserver.NewAPI(authService, siteService, jobService, auditService, dbService, backupService, sslService, servicesMonitor, updaterService)
 

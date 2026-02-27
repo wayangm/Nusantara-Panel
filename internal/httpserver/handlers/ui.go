@@ -136,6 +136,14 @@ const uiHTML = `<!doctype html>
       </section>
 
       <section class="card">
+        <h2>Panel Version</h2>
+        <p id="versionMeta">Version not loaded.</p>
+        <div class="row">
+          <button class="alt" id="btnPanelVersion">GET /v1/panel/version</button>
+        </div>
+      </section>
+
+      <section class="card">
         <h2>Panel Update</h2>
         <p>Run update without SSH (admin only).</p>
         <div id="updateState" class="pill">Unknown</div>
@@ -177,6 +185,7 @@ const uiHTML = `<!doctype html>
       var out = document.getElementById('out');
       var tokenBox = document.getElementById('token');
       var authStatus = document.getElementById('authStatus');
+      var versionMeta = document.getElementById('versionMeta');
       var updateState = document.getElementById('updateState');
       var updateMeta = document.getElementById('updateMeta');
       var updateProgress = document.getElementById('updateProgress');
@@ -191,6 +200,7 @@ const uiHTML = `<!doctype html>
           tokenBox.textContent = token;
           authStatus.textContent = 'Authenticated';
           authStatus.className = 'ok';
+          fetchPanelVersion(true);
           fetchUpdateStatus(true);
           startUpdatePolling();
         } else {
@@ -198,6 +208,7 @@ const uiHTML = `<!doctype html>
           tokenBox.textContent = '(empty)';
           authStatus.textContent = 'Not authenticated';
           authStatus.className = 'bad';
+          versionMeta.textContent = 'Login as admin to read installed version.';
           stopUpdatePolling();
           setUpdateState('Not authenticated', 'err', 0);
           updateMeta.textContent = 'Login as admin to use panel update.';
@@ -278,6 +289,28 @@ const uiHTML = `<!doctype html>
         fetchUpdateStatus(true);
       }
 
+      function applyPanelVersion(info) {
+        if (!info || typeof info !== 'object') return;
+        versionMeta.textContent =
+          'version=' + (info.version || '-') +
+          ' commit=' + (info.commit || '-') +
+          ' build_time=' + (info.build_time || '-');
+      }
+
+      async function fetchPanelVersion(silent) {
+        if (!token) return null;
+        try {
+          var info = await callAPI('/v1/panel/version', 'GET', null, true, !!silent);
+          applyPanelVersion(info);
+          return info;
+        } catch (err) {
+          if (!silent) {
+            out.textContent = 'Request failed: ' + err;
+          }
+          return null;
+        }
+      }
+
       async function callAPI(path, method, body, needAuth, silent) {
         var headers = { 'Content-Type': 'application/json' };
         if (needAuth && token) {
@@ -341,6 +374,11 @@ const uiHTML = `<!doctype html>
       });
       document.getElementById('btnJobs').addEventListener('click', function () {
         callAPI('/v1/jobs', 'GET', null, true).catch(function (err) {
+          out.textContent = 'Request failed: ' + err;
+        });
+      });
+      document.getElementById('btnPanelVersion').addEventListener('click', function () {
+        fetchPanelVersion(false).catch(function (err) {
           out.textContent = 'Request failed: ' + err;
         });
       });

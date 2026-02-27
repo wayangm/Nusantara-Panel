@@ -151,7 +151,18 @@ fi
 echo "[4/5] Building nusantarad..."
 cd "${SOURCE_DIR}"
 mkdir -p bin
-go build -o bin/nusantarad ./cmd/nusantarad
+
+BUILD_VERSION="dev"
+if [[ -f VERSION ]]; then
+  _version="$(tr -d '[:space:]' < VERSION)"
+  if [[ -n "${_version}" ]]; then
+    BUILD_VERSION="v${_version}"
+  fi
+fi
+BUILD_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+LDFLAGS="-X nusantara/internal/buildinfo.Version=${BUILD_VERSION} -X nusantara/internal/buildinfo.Commit=${BUILD_COMMIT} -X nusantara/internal/buildinfo.BuildTime=${BUILD_TIME}"
+go build -ldflags "${LDFLAGS}" -o bin/nusantarad ./cmd/nusantarad
 
 if [[ ! -x scripts/install_ubuntu_22.sh ]]; then
   chmod +x scripts/install_ubuntu_22.sh

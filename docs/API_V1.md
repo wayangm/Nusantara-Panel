@@ -185,6 +185,10 @@ Response:
 - Auth: admin
 - Menampilkan state unit updater + potongan log terbaru dari journal.
 
+### `GET /v1/panel/version`
+- Auth: admin
+- Menampilkan metadata build panel yang sedang berjalan (`version`, `commit`, `build_time`).
+
 ## Backlog endpoint berikutnya
 - `GET /v1/backup/list`
 
