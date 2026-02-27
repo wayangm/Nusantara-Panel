@@ -589,13 +589,17 @@ func (a *API) handleStartPanelUpdate(w http.ResponseWriter, r *http.Request) {
 
 	result, err := a.updater.Start(r.Context())
 	if err != nil {
+		statusPayload := map[string]any{}
+		if st, stErr := a.updater.Status(r.Context()); stErr == nil {
+			statusPayload["update_status"] = st
+		}
 		switch {
 		case errors.Is(err, updater.ErrAlreadyRunning):
-			writeError(w, http.StatusConflict, "panel update is already running")
+			writeJSON(w, http.StatusConflict, mergeErrorPayload("panel update is already running", statusPayload))
 		case errors.Is(err, updater.ErrDisabled):
-			writeError(w, http.StatusBadRequest, "panel updater is disabled")
+			writeJSON(w, http.StatusBadRequest, mergeErrorPayload("panel updater is disabled", statusPayload))
 		default:
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeJSON(w, http.StatusInternalServerError, mergeErrorPayload(err.Error(), statusPayload))
 		}
 		return
 	}
@@ -623,6 +627,17 @@ func (a *API) handlePanelUpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, status)
+}
+
+func mergeErrorPayload(message string, extra map[string]any) map[string]any {
+	payload := map[string]any{
+		"error":     message,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	for k, v := range extra {
+		payload[k] = v
+	}
+	return payload
 }
 
 func (a *API) requireAuth(next http.Handler) http.Handler {

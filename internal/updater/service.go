@@ -122,10 +122,18 @@ func (s *Service) Start(ctx context.Context) (StartResult, error) {
 			)
 			retryOut, retryErr := cmdRetry.CombinedOutput()
 			if retryErr != nil {
-				return StartResult{}, fmt.Errorf("start updater unit: %w: %s", retryErr, strings.TrimSpace(string(retryOut)))
+				detail := strings.TrimSpace(string(retryOut))
+				if st, stErr := s.Status(ctx); stErr == nil {
+					detail = detail + "; updater_status=" + summarizeStatus(st)
+				}
+				return StartResult{}, fmt.Errorf("start updater unit: %w: %s", retryErr, detail)
 			}
 		} else {
-			return StartResult{}, fmt.Errorf("start updater unit: %w: %s", err, raw)
+			detail := raw
+			if st, stErr := s.Status(ctx); stErr == nil {
+				detail = detail + "; updater_status=" + summarizeStatus(st)
+			}
+			return StartResult{}, fmt.Errorf("start updater unit: %w: %s", err, detail)
 		}
 	}
 
@@ -301,6 +309,25 @@ func shellQuote(v string) string {
 func parseInt(v string) int {
 	n, _ := strconv.Atoi(strings.TrimSpace(v))
 	return n
+}
+
+func summarizeStatus(st Status) string {
+	base := fmt.Sprintf(
+		"unit=%s active=%s sub=%s result=%s exec_status=%d",
+		st.Unit,
+		st.ActiveState,
+		st.SubState,
+		st.Result,
+		st.ExecMainStatus,
+	)
+	if len(st.Logs) == 0 {
+		return base
+	}
+	start := len(st.Logs) - 5
+	if start < 0 {
+		start = 0
+	}
+	return base + " logs_tail=" + strings.Join(st.Logs[start:], " || ")
 }
 
 func (s *Service) logf(format string, args ...any) {
