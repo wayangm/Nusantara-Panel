@@ -1,9 +1,10 @@
-﻿package ssl
+package ssl
 
 import (
 	"context"
 	"io"
 	"log"
+	"strings"
 	"testing"
 	"time"
 )
@@ -25,3 +26,13 @@ func TestIssueValidation(t *testing.T) {
 	}
 }
 
+func TestIssueCommandArgsFallbackToNginxWhenNoWebroot(t *testing.T) {
+	args := issueCommandArgs("unlikely-domain-for-test-1234567890.example", "admin@example.com")
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--nginx") {
+		t.Fatalf("expected --nginx fallback args, got: %s", joined)
+	}
+	if strings.Contains(joined, "--webroot") {
+		t.Fatalf("did not expect --webroot in fallback args, got: %s", joined)
+	}
+}

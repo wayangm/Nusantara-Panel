@@ -114,6 +114,9 @@ curl -sS -X POST http://127.0.0.1:8080/v1/ssl/issue \
   -H "Content-Type: application/json" \
   -d '{"domain":"example.com","email":"admin@example.com"}'
 ```
+Catatan:
+- Panel mencoba alur `certbot certonly` lalu `certbot install --nginx --redirect`.
+- Jika path webroot standar ada (`/var/www/<domain>/public`), challenge akan menggunakan mode webroot agar lebih stabil.
 
 Renew all cert:
 ```bash

@@ -47,6 +47,9 @@ func TestRenderNginxServer(t *testing.T) {
 	if !strings.Contains(conf, "try_files $uri $uri/ =404;") {
 		t.Fatalf("missing static location")
 	}
+	if !strings.Contains(conf, "/.well-known/acme-challenge/") {
+		t.Fatalf("missing acme challenge location")
+	}
 }
 
 func TestEnsureRuntimeBootstrapStaticCreatesIndex(t *testing.T) {

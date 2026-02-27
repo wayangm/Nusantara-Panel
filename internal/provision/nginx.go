@@ -132,6 +132,10 @@ func sanitizeConfName(domain string) string {
 
 func renderNginxServer(site store.Site) string {
 	serverCore := runtimeServerCore(site.Runtime, site.RootPath)
+	acmeChallenge := `    location ^~ /.well-known/acme-challenge/ {
+        default_type text/plain;
+        try_files $uri =404;
+    }`
 	return fmt.Sprintf(`server {
     listen 80;
     listen [::]:80;
@@ -141,8 +145,10 @@ func renderNginxServer(site store.Site) string {
     index index.php index.html index.htm;
 
 %s
+
+%s
 }
-`, site.Domain, site.RootPath, serverCore)
+`, site.Domain, site.RootPath, acmeChallenge, serverCore)
 }
 
 func runtimeServerCore(runtimeName, rootPath string) string {

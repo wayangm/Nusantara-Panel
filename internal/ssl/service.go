@@ -1,11 +1,13 @@
-﻿package ssl
+package ssl
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -61,16 +63,25 @@ func (s *Service) Issue(ctx context.Context, domain, email string) error {
 	runCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 
-	args := []string{
-		"--nginx",
-		"-d", domain,
-		"--non-interactive",
-		"--agree-tos",
-		"-m", email,
-		"--redirect",
+	_ = os.RemoveAll("/var/lib/letsencrypt/temp_checkpoint")
+
+	issueArgs := issueCommandArgs(domain, email)
+	if err := runCommand(runCtx, s.certbotCommand, issueArgs...); err != nil {
+		if !certificateExists(domain) {
+			return fmt.Errorf("issue cert: %w", err)
+		}
+		s.logf("cert issue command returned non-zero, but certificate already exists domain=%s err=%v", domain, err)
 	}
-	if err := runCommand(runCtx, s.certbotCommand, args...); err != nil {
-		return fmt.Errorf("issue cert: %w", err)
+
+	installArgs := []string{
+		"install",
+		"--cert-name", domain,
+		"--nginx",
+		"--redirect",
+		"--non-interactive",
+	}
+	if err := runCommand(runCtx, s.certbotCommand, installArgs...); err != nil {
+		return fmt.Errorf("install cert: %w", err)
 	}
 	return nil
 }
@@ -127,3 +138,39 @@ func (s *Service) logf(format string, args ...any) {
 	}
 }
 
+func issueCommandArgs(domain, email string) []string {
+	args := []string{
+		"certonly",
+		"-d", domain,
+		"--non-interactive",
+		"--agree-tos",
+		"-m", email,
+	}
+
+	webroot := defaultWebrootForDomain(domain)
+	if webroot == "" {
+		return append(args, "--nginx")
+	}
+	return append(args, "--webroot", "-w", webroot)
+}
+
+func defaultWebrootForDomain(domain string) string {
+	root := filepath.Join("/var/www", domain, "public")
+	info, err := os.Stat(root)
+	if err != nil || !info.IsDir() {
+		return ""
+	}
+	return root
+}
+
+func certificateExists(domain string) bool {
+	fullchain := filepath.Join("/etc/letsencrypt/live", domain, "fullchain.pem")
+	privkey := filepath.Join("/etc/letsencrypt/live", domain, "privkey.pem")
+	if _, err := os.Stat(fullchain); err != nil {
+		return false
+	}
+	if _, err := os.Stat(privkey); err != nil {
+		return false
+	}
+	return true
+}
