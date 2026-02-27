@@ -101,6 +101,50 @@ const uiHTML = `<!doctype html>
       background: linear-gradient(90deg, #0d9488, #0369a1);
       transition: width .25s ease;
     }
+    .table {
+      margin-top: 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #f8fafc;
+    }
+    .site-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 10px;
+      border-top: 1px solid var(--line);
+    }
+    .site-row:first-child { border-top: 0; }
+    .site-main { min-width: 0; }
+    .site-domain { font-weight: 700; }
+    .site-meta { font-size: 12px; color: #475569; margin-top: 2px; word-break: break-word; }
+    .badge {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-top: 4px;
+      background: #e2e8f0;
+      color: #334155;
+    }
+    .badge.active { background: #dcfce7; color: #166534; }
+    .badge.provisioning, .badge.deleting { background: #dbeafe; color: #1d4ed8; }
+    .badge.failed { background: #fee2e2; color: #b91c1c; }
+    .mini {
+      border: 0;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #b91c1c;
+      color: #fff;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .muted { color: #64748b; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -172,6 +216,17 @@ const uiHTML = `<!doctype html>
           <button id="btnCreateSite">POST /v1/sites</button>
         </div>
       </section>
+
+      <section class="card">
+        <h2>Sites Explorer</h2>
+        <p id="sitesMeta">Login to load sites list.</p>
+        <div class="row">
+          <button class="alt" id="btnSitesRefresh">Refresh Sites</button>
+        </div>
+        <div id="sitesList" class="table">
+          <div class="site-row"><div class="muted">No data loaded.</div></div>
+        </div>
+      </section>
     </div>
 
     <section class="card" style="margin-top:16px">
@@ -186,12 +241,15 @@ const uiHTML = `<!doctype html>
       var tokenBox = document.getElementById('token');
       var authStatus = document.getElementById('authStatus');
       var versionMeta = document.getElementById('versionMeta');
+      var sitesMeta = document.getElementById('sitesMeta');
+      var sitesList = document.getElementById('sitesList');
       var updateState = document.getElementById('updateState');
       var updateMeta = document.getElementById('updateMeta');
       var updateProgress = document.getElementById('updateProgress');
       var btnStartUpdate = document.getElementById('btnStartUpdate');
       var token = localStorage.getItem('nusantara_token') || '';
       var updatePollTimer = null;
+      var sitesPollTimer = null;
 
       function setToken(next) {
         token = (next || '').trim();
@@ -201,8 +259,10 @@ const uiHTML = `<!doctype html>
           authStatus.textContent = 'Authenticated';
           authStatus.className = 'ok';
           fetchPanelVersion(true);
+          fetchSites(true);
           fetchUpdateStatus(true);
           startUpdatePolling();
+          startSitesPolling();
         } else {
           localStorage.removeItem('nusantara_token');
           tokenBox.textContent = '(empty)';
@@ -210,8 +270,11 @@ const uiHTML = `<!doctype html>
           authStatus.className = 'bad';
           versionMeta.textContent = 'Login as admin to read installed version.';
           stopUpdatePolling();
+          stopSitesPolling();
           setUpdateState('Not authenticated', 'err', 0);
           updateMeta.textContent = 'Login as admin to use panel update.';
+          sitesMeta.textContent = 'Login to load sites list.';
+          sitesList.innerHTML = '<div class="site-row"><div class="muted">No data loaded.</div></div>';
         }
       }
 
@@ -236,6 +299,52 @@ const uiHTML = `<!doctype html>
         if (!updatePollTimer) return;
         clearInterval(updatePollTimer);
         updatePollTimer = null;
+      }
+
+      function startSitesPolling() {
+        if (sitesPollTimer) return;
+        sitesPollTimer = setInterval(function () {
+          fetchSites(true);
+        }, 8000);
+      }
+
+      function stopSitesPolling() {
+        if (!sitesPollTimer) return;
+        clearInterval(sitesPollTimer);
+        sitesPollTimer = null;
+      }
+
+      function escapeHtml(value) {
+        return String(value || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
+      function renderSites(items) {
+        if (!Array.isArray(items) || items.length === 0) {
+          sitesList.innerHTML = '<div class="site-row"><div class="muted">No sites yet.</div></div>';
+          return;
+        }
+        var html = items.map(function (site) {
+          var status = String(site.status || '').toLowerCase();
+          var badgeClass = 'badge ' + status;
+          return '' +
+            '<div class="site-row">' +
+              '<div class="site-main">' +
+                '<div class="site-domain">' + escapeHtml(site.domain) + '</div>' +
+                '<div class="site-meta">id=' + escapeHtml(site.id) + '</div>' +
+                '<div class="site-meta">runtime=' + escapeHtml(site.runtime) + ' root=' + escapeHtml(site.root_path) + '</div>' +
+                '<div class="' + badgeClass + '">' + escapeHtml(status || 'unknown') + '</div>' +
+              '</div>' +
+              '<div>' +
+                '<button class="mini" data-delete-site="' + escapeHtml(site.id) + '">Delete</button>' +
+              '</div>' +
+            '</div>';
+        }).join('');
+        sitesList.innerHTML = html;
       }
 
       function applyUpdateStatus(st) {
@@ -311,6 +420,22 @@ const uiHTML = `<!doctype html>
         }
       }
 
+      async function fetchSites(silent) {
+        if (!token) return null;
+        try {
+          var payload = await callAPI('/v1/sites', 'GET', null, true, !!silent);
+          var items = (payload && payload.items) || [];
+          renderSites(items);
+          sitesMeta.textContent = 'Sites loaded: ' + items.length + ' (auto-refresh every 8s)';
+          return payload;
+        } catch (err) {
+          if (!silent) {
+            out.textContent = 'Request failed: ' + err;
+          }
+          return null;
+        }
+      }
+
       async function callAPI(path, method, body, needAuth, silent) {
         var headers = { 'Content-Type': 'application/json' };
         if (needAuth && token) {
@@ -368,7 +493,7 @@ const uiHTML = `<!doctype html>
         });
       });
       document.getElementById('btnSites').addEventListener('click', function () {
-        callAPI('/v1/sites', 'GET', null, true).catch(function (err) {
+        fetchSites(false).catch(function (err) {
           out.textContent = 'Request failed: ' + err;
         });
       });
@@ -379,6 +504,11 @@ const uiHTML = `<!doctype html>
       });
       document.getElementById('btnPanelVersion').addEventListener('click', function () {
         fetchPanelVersion(false).catch(function (err) {
+          out.textContent = 'Request failed: ' + err;
+        });
+      });
+      document.getElementById('btnSitesRefresh').addEventListener('click', function () {
+        fetchSites(false).catch(function (err) {
           out.textContent = 'Request failed: ' + err;
         });
       });
@@ -409,7 +539,24 @@ const uiHTML = `<!doctype html>
           domain: document.getElementById('domain').value,
           root_path: document.getElementById('rootPath').value,
           runtime: document.getElementById('runtime').value
-        }, true).catch(function (err) {
+        }, true).then(function () {
+          fetchSites(true);
+        }).catch(function (err) {
+          out.textContent = 'Request failed: ' + err;
+        });
+      });
+
+      sitesList.addEventListener('click', function (evt) {
+        var target = evt.target;
+        if (!target || !target.getAttribute) return;
+        var siteID = target.getAttribute('data-delete-site');
+        if (!siteID) return;
+        if (!window.confirm('Delete site ' + siteID + '?')) return;
+
+        callAPI('/v1/sites/' + encodeURIComponent(siteID), 'DELETE', null, true).then(function () {
+          sitesMeta.textContent = 'Delete requested for site ' + siteID + '. Refreshing...';
+          fetchSites(true);
+        }).catch(function (err) {
           out.textContent = 'Request failed: ' + err;
         });
       });
