@@ -16,6 +16,17 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 BINARY_SRC="$1"
 
+find_asset() {
+  local path
+  for path in "$@"; do
+    if [[ -f "${path}" ]]; then
+      echo "${path}"
+      return 0
+    fi
+  done
+  return 1
+}
+
 if [[ ! -f "${BINARY_SRC}" ]]; then
   echo "Binary not found: ${BINARY_SRC}"
   exit 1
@@ -60,12 +71,30 @@ install -d -m 0750 -o nusantara -g nusantara /var/log/nusantara-panel
 install -d -m 0750 -o root -g root /var/backups/nusantara-panel
 install -d -m 0755 /etc/nusantara-panel
 
+SERVICE_UNIT_SRC="$(find_asset \
+  "${ROOT_DIR}/deploy/systemd/nusantara-panel.service" \
+  "${SCRIPT_DIR}/deploy/systemd/nusantara-panel.service" \
+  "${SCRIPT_DIR}/nusantara-panel.service" || true)"
+if [[ -z "${SERVICE_UNIT_SRC:-}" ]]; then
+  echo "Cannot find nusantara-panel.service (expected in deploy/systemd or script directory)"
+  exit 1
+fi
+
+ENV_EXAMPLE_SRC="$(find_asset \
+  "${ROOT_DIR}/configs/nusantara-panel.env.example" \
+  "${SCRIPT_DIR}/configs/nusantara-panel.env.example" \
+  "${SCRIPT_DIR}/nusantara-panel.env.example" || true)"
+if [[ -z "${ENV_EXAMPLE_SRC:-}" ]]; then
+  echo "Cannot find nusantara-panel.env.example (expected in configs or script directory)"
+  exit 1
+fi
+
 install -m 0755 "${BINARY_SRC}" /usr/local/bin/nusantarad
-install -m 0644 "${ROOT_DIR}/deploy/systemd/nusantara-panel.service" /etc/systemd/system/nusantara-panel.service
+install -m 0644 "${SERVICE_UNIT_SRC}" /etc/systemd/system/nusantara-panel.service
 
 BOOTSTRAP_PASSWORD="$(openssl rand -base64 18 | tr -d '\n' | tr '/+' 'AB')"
 if [[ ! -f /etc/nusantara-panel/nusantara-panel.env ]]; then
-  install -m 0640 "${ROOT_DIR}/configs/nusantara-panel.env.example" /etc/nusantara-panel/nusantara-panel.env
+  install -m 0640 "${ENV_EXAMPLE_SRC}" /etc/nusantara-panel/nusantara-panel.env
 fi
 
 if grep -q '^NUSANTARA_BOOTSTRAP_ADMIN_PASSWORD=' /etc/nusantara-panel/nusantara-panel.env; then

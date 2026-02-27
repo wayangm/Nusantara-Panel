@@ -30,17 +30,20 @@ build_target() {
   local outdir="${DIST_DIR}/nusantara-panel_${VERSION}_${goos}_${goarch}"
   local binary="${outdir}/nusantarad"
 
-  mkdir -p "${outdir}"
+  mkdir -p "${outdir}" "${outdir}/deploy/systemd" "${outdir}/configs" "${outdir}/scripts"
   GOOS="${goos}" GOARCH="${goarch}" CGO_ENABLED=0 \
     go build -trimpath -ldflags="-s -w" -o "${binary}" ./cmd/nusantarad
 
   cp "${ROOT_DIR}/configs/nusantara-panel.env.example" "${outdir}/nusantara-panel.env.example"
+  cp "${ROOT_DIR}/configs/nusantara-panel.env.example" "${outdir}/configs/nusantara-panel.env.example"
   cp "${ROOT_DIR}/deploy/systemd/nusantara-panel.service" "${outdir}/nusantara-panel.service"
+  cp "${ROOT_DIR}/deploy/systemd/nusantara-panel.service" "${outdir}/deploy/systemd/nusantara-panel.service"
   cp "${ROOT_DIR}/scripts/install_ubuntu_22.sh" "${outdir}/install_ubuntu_22.sh"
+  cp "${ROOT_DIR}/scripts/install_ubuntu_22.sh" "${outdir}/scripts/install_ubuntu_22.sh"
   cp "${ROOT_DIR}/README.md" "${outdir}/README.md"
   cp "${ROOT_DIR}/LICENSE" "${outdir}/LICENSE"
 
-  chmod +x "${binary}" "${outdir}/install_ubuntu_22.sh"
+  chmod +x "${binary}" "${outdir}/install_ubuntu_22.sh" "${outdir}/scripts/install_ubuntu_22.sh"
 
   (
     cd "${DIST_DIR}"

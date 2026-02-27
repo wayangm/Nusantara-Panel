@@ -100,12 +100,27 @@ if [[ -z "${PAYLOAD_DIR}" ]]; then
   exit 1
 fi
 
-if [[ ! -x "${PAYLOAD_DIR}/install_ubuntu_22.sh" ]] || [[ ! -x "${PAYLOAD_DIR}/nusantarad" ]]; then
+INSTALLER_PATH="${PAYLOAD_DIR}/install_ubuntu_22.sh"
+if [[ ! -x "${INSTALLER_PATH}" ]] && [[ -x "${PAYLOAD_DIR}/scripts/install_ubuntu_22.sh" ]]; then
+  INSTALLER_PATH="${PAYLOAD_DIR}/scripts/install_ubuntu_22.sh"
+fi
+
+if [[ -f "${PAYLOAD_DIR}/nusantara-panel.service" ]]; then
+  mkdir -p "${TMP_DIR}/deploy/systemd"
+  cp -f "${PAYLOAD_DIR}/nusantara-panel.service" "${TMP_DIR}/deploy/systemd/nusantara-panel.service"
+fi
+
+if [[ -f "${PAYLOAD_DIR}/nusantara-panel.env.example" ]]; then
+  mkdir -p "${TMP_DIR}/configs"
+  cp -f "${PAYLOAD_DIR}/nusantara-panel.env.example" "${TMP_DIR}/configs/nusantara-panel.env.example"
+fi
+
+if [[ ! -x "${INSTALLER_PATH}" ]] || [[ ! -x "${PAYLOAD_DIR}/nusantarad" ]]; then
   echo "Invalid release payload: installer or binary not found"
   exit 1
 fi
 
 echo "Installing Nusantara Panel from release..."
-"${PAYLOAD_DIR}/install_ubuntu_22.sh" "${PAYLOAD_DIR}/nusantarad"
+"${INSTALLER_PATH}" "${PAYLOAD_DIR}/nusantarad"
 
 echo "Done."
