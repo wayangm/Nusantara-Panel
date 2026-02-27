@@ -54,14 +54,35 @@ curl -sS -X PUT http://127.0.0.1:8080/v1/sites/<SITE_ID>/content \
   -d '{"file":"index.html","content":"<h1>Updated from API</h1>"}'
 ```
 
-## 7. Lihat job, audit, dan monitor
+## 7. Upload/list/delete file site
+List file:
+```bash
+curl -sS "http://127.0.0.1:8080/v1/sites/<SITE_ID>/files?dir=assets" \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+Upload file (contoh payload base64 dipersingkat):
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v1/sites/<SITE_ID>/files/upload \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"path":"assets/logo.txt","content_base64":"SGVsbG8gTnVzYW50YXJhCg=="}'
+```
+
+Delete file:
+```bash
+curl -sS -X DELETE "http://127.0.0.1:8080/v1/sites/<SITE_ID>/files?path=assets/logo.txt" \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+## 8. Lihat job, audit, dan monitor
 ```bash
 curl -sS http://127.0.0.1:8080/v1/jobs -H "Authorization: Bearer <TOKEN>"
 curl -sS http://127.0.0.1:8080/v1/audit/logs -H "Authorization: Bearer <TOKEN>"
 curl -sS http://127.0.0.1:8080/v1/monitor/services -H "Authorization: Bearer <TOKEN>"
 ```
 
-## 8. Issue SSL
+## 9. Issue SSL
 ```bash
 curl -sS -X POST http://127.0.0.1:8080/v1/ssl/issue \
   -H "Authorization: Bearer <TOKEN>" \
@@ -69,7 +90,7 @@ curl -sS -X POST http://127.0.0.1:8080/v1/ssl/issue \
   -d '{"domain":"example.com","email":"admin@example.com"}'
 ```
 
-## 9. Database create + user grant
+## 10. Database create + user grant
 ```bash
 curl -sS -X POST http://127.0.0.1:8080/v1/db/databases \
   -H "Authorization: Bearer <TOKEN>" \
@@ -82,7 +103,7 @@ curl -sS -X POST http://127.0.0.1:8080/v1/db/users \
   -d '{"database":"app_db","username":"app_user","password":"StrongPass123","host":"localhost"}'
 ```
 
-## 10. Run backup snapshot
+## 11. Run backup snapshot
 ```bash
 curl -sS -X POST http://127.0.0.1:8080/v1/backup/run \
   -H "Authorization: Bearer <TOKEN>"

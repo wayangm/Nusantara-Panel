@@ -78,6 +78,27 @@ curl -sS -X PUT http://127.0.0.1:8080/v1/sites/<SITE_ID>/content \
   -d '{"file":"index.html","content":"<h1>Updated content</h1>"}'
 ```
 
+## 5c. Upload/list/delete file site tanpa SSH
+List:
+```bash
+curl -sS "http://127.0.0.1:8080/v1/sites/<SITE_ID>/files?dir=assets" \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+Upload:
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v1/sites/<SITE_ID>/files/upload \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"path":"assets/readme.txt","content_base64":"SGVsbG8="}'
+```
+
+Delete:
+```bash
+curl -sS -X DELETE "http://127.0.0.1:8080/v1/sites/<SITE_ID>/files?path=assets/readme.txt" \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
 ## 6. Database provisioning
 List database:
 ```bash

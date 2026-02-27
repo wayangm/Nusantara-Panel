@@ -83,3 +83,30 @@ func TestResolveEditableFilePrefersExistingIndex(t *testing.T) {
 		t.Fatalf("expected existing index.htm, got %s", file)
 	}
 }
+
+func TestNormalizeRelativePath(t *testing.T) {
+	pathValue, err := normalizeRelativePath("assets/logo.png", false)
+	if err != nil {
+		t.Fatalf("normalize valid path: %v", err)
+	}
+	if pathValue != "assets/logo.png" {
+		t.Fatalf("unexpected normalized path: %s", pathValue)
+	}
+
+	if _, err := normalizeRelativePath("/etc/passwd", false); err == nil {
+		t.Fatalf("expected absolute path rejection")
+	}
+	if _, err := normalizeRelativePath("../secret.txt", false); err == nil {
+		t.Fatalf("expected traversal path rejection")
+	}
+}
+
+func TestIsWithinRoot(t *testing.T) {
+	root := filepath.Clean("/var/www/site1")
+	if !isWithinRoot(root, filepath.Join(root, "assets", "logo.png")) {
+		t.Fatalf("expected path inside root")
+	}
+	if isWithinRoot(root, "/var/www/site1-backup/file.txt") {
+		t.Fatalf("expected path outside root to be rejected")
+	}
+}

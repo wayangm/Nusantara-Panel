@@ -113,6 +113,30 @@ Catatan:
 - File yang diizinkan sementara: `index.html`, `index.htm`, `index.php`.
 - Batas ukuran content: 1 MiB.
 
+### `GET /v1/sites/{site_id}/files`
+- Auth: admin
+- Query:
+  - `dir` (opsional, relative path, default root site)
+  - `limit` (opsional)
+- Response: daftar file/direktori pada path target.
+
+### `POST /v1/sites/{site_id}/files/upload`
+- Auth: admin
+Request:
+```json
+{
+  "path": "assets/logo.png",
+  "content_base64": "iVBORw0KGgoAAAANSUhEUgAA..."
+}
+```
+Catatan:
+- `path` wajib relative terhadap root site.
+- Max upload size: 8 MiB.
+
+### `DELETE /v1/sites/{site_id}/files?path=assets/logo.png`
+- Auth: admin
+- Hanya untuk file (bukan directory).
+
 ### `DELETE /v1/sites/{site_id}`
 - Auth: admin
 Catatan:

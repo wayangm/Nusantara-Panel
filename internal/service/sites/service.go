@@ -2,12 +2,14 @@ package sites
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -22,6 +24,9 @@ var (
 	ErrInvalidRuntime = errors.New("invalid runtime")
 	ErrInvalidFile    = errors.New("invalid file")
 	ErrContentTooLong = errors.New("content too long")
+	ErrInvalidPath    = errors.New("invalid path")
+	ErrInvalidBase64  = errors.New("invalid base64 content")
+	ErrFileTooLarge   = errors.New("file too large")
 )
 
 var domainRegex = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
@@ -40,6 +45,15 @@ var editableFiles = map[string]struct{}{
 }
 
 const maxSiteContentBytes = 1024 * 1024 // 1 MiB
+const maxSiteUploadBytes = 8 * 1024 * 1024
+
+type SiteFileEntry struct {
+	Name    string    `json:"name"`
+	Path    string    `json:"path"`
+	Type    string    `json:"type"`
+	Size    int64     `json:"size"`
+	ModTime time.Time `json:"mod_time"`
+}
 
 type Service struct {
 	repo   store.Repository
@@ -179,6 +193,140 @@ func (s *Service) UpdateSiteContent(ctx context.Context, id, file, content strin
 	return site, name, len(content), nil
 }
 
+func (s *Service) ListSiteFiles(ctx context.Context, id, dir string, limit int) (store.Site, string, []SiteFileEntry, error) {
+	site, err := s.repo.GetSiteByID(ctx, id)
+	if err != nil {
+		return store.Site{}, "", nil, err
+	}
+
+	relDir, err := normalizeRelativePath(dir, true)
+	if err != nil {
+		return store.Site{}, "", nil, err
+	}
+	targetDir := filepath.Join(site.RootPath, filepath.FromSlash(relDir))
+	if !isWithinRoot(site.RootPath, targetDir) {
+		return store.Site{}, "", nil, ErrInvalidPath
+	}
+
+	entries, err := os.ReadDir(targetDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return store.Site{}, "", nil, store.ErrNotFound
+		}
+		return store.Site{}, "", nil, fmt.Errorf("read directory: %w", err)
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		iDir := entries[i].IsDir()
+		jDir := entries[j].IsDir()
+		if iDir != jDir {
+			return iDir
+		}
+		return strings.ToLower(entries[i].Name()) < strings.ToLower(entries[j].Name())
+	})
+
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	if len(entries) > limit {
+		entries = entries[:limit]
+	}
+
+	items := make([]SiteFileEntry, 0, len(entries))
+	for _, entry := range entries {
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			continue
+		}
+		relPath := entry.Name()
+		if relDir != "" {
+			relPath = path.Join(relDir, entry.Name())
+		}
+		itemType := "file"
+		size := info.Size()
+		if entry.IsDir() {
+			itemType = "dir"
+			size = 0
+		}
+		items = append(items, SiteFileEntry{
+			Name:    entry.Name(),
+			Path:    relPath,
+			Type:    itemType,
+			Size:    size,
+			ModTime: info.ModTime().UTC(),
+		})
+	}
+	return site, relDir, items, nil
+}
+
+func (s *Service) UploadSiteFile(ctx context.Context, id, relPath, contentBase64 string) (store.Site, string, int, error) {
+	site, err := s.repo.GetSiteByID(ctx, id)
+	if err != nil {
+		return store.Site{}, "", 0, err
+	}
+
+	cleanPath, err := normalizeRelativePath(relPath, false)
+	if err != nil {
+		return store.Site{}, "", 0, err
+	}
+
+	data, err := base64.StdEncoding.DecodeString(strings.TrimSpace(contentBase64))
+	if err != nil {
+		return store.Site{}, "", 0, ErrInvalidBase64
+	}
+	if len(data) > maxSiteUploadBytes {
+		return store.Site{}, "", 0, ErrFileTooLarge
+	}
+
+	fullPath := filepath.Join(site.RootPath, filepath.FromSlash(cleanPath))
+	if !isWithinRoot(site.RootPath, fullPath) {
+		return store.Site{}, "", 0, ErrInvalidPath
+	}
+	if info, statErr := os.Stat(fullPath); statErr == nil && info.IsDir() {
+		return store.Site{}, "", 0, ErrInvalidPath
+	}
+
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+		return store.Site{}, "", 0, fmt.Errorf("ensure parent dir: %w", err)
+	}
+	if err := os.WriteFile(fullPath, data, 0o644); err != nil {
+		return store.Site{}, "", 0, fmt.Errorf("write file: %w", err)
+	}
+	return site, cleanPath, len(data), nil
+}
+
+func (s *Service) DeleteSiteFile(ctx context.Context, id, relPath string) (store.Site, string, error) {
+	site, err := s.repo.GetSiteByID(ctx, id)
+	if err != nil {
+		return store.Site{}, "", err
+	}
+
+	cleanPath, err := normalizeRelativePath(relPath, false)
+	if err != nil {
+		return store.Site{}, "", err
+	}
+	fullPath := filepath.Join(site.RootPath, filepath.FromSlash(cleanPath))
+	if !isWithinRoot(site.RootPath, fullPath) {
+		return store.Site{}, "", ErrInvalidPath
+	}
+
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return store.Site{}, "", store.ErrNotFound
+		}
+		return store.Site{}, "", fmt.Errorf("stat file: %w", err)
+	}
+	if info.IsDir() {
+		return store.Site{}, "", ErrInvalidPath
+	}
+
+	if err := os.Remove(fullPath); err != nil {
+		return store.Site{}, "", fmt.Errorf("delete file: %w", err)
+	}
+	return site, cleanPath, nil
+}
+
 func normalizeDomain(in string) string {
 	return strings.ToLower(strings.TrimSpace(strings.TrimSuffix(in, ".")))
 }
@@ -250,4 +398,43 @@ func fileCandidatesByRuntime(runtimeName string) []string {
 		return []string{"index.php", "index.html", "index.htm"}
 	}
 	return []string{"index.html", "index.htm", "index.php"}
+}
+
+func normalizeRelativePath(raw string, allowEmpty bool) (string, error) {
+	trimmed := strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	if trimmed == "" {
+		if allowEmpty {
+			return "", nil
+		}
+		return "", ErrInvalidPath
+	}
+	if strings.HasPrefix(trimmed, "/") {
+		return "", ErrInvalidPath
+	}
+	for _, segment := range strings.Split(trimmed, "/") {
+		if segment == ".." {
+			return "", ErrInvalidPath
+		}
+	}
+	clean := path.Clean("/" + trimmed)
+	clean = strings.TrimPrefix(clean, "/")
+	if clean == "." || clean == "" {
+		if allowEmpty {
+			return "", nil
+		}
+		return "", ErrInvalidPath
+	}
+	if clean == ".." || strings.HasPrefix(clean, "../") || strings.Contains(clean, "/../") {
+		return "", ErrInvalidPath
+	}
+	return clean, nil
+}
+
+func isWithinRoot(rootPath, targetPath string) bool {
+	root := filepath.Clean(rootPath)
+	target := filepath.Clean(targetPath)
+	if target == root {
+		return true
+	}
+	return strings.HasPrefix(target, root+string(os.PathSeparator))
 }

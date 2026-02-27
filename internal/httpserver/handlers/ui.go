@@ -251,6 +251,20 @@ const uiHTML = `<!doctype html>
           <button class="alt" id="btnLoadFile">GET /v1/sites/{id}/content</button>
           <button id="btnSaveFile">PUT /v1/sites/{id}/content</button>
         </div>
+        <hr style="border:0;border-top:1px solid var(--line);margin:12px 0;">
+        <h2 style="margin-top:0">File Upload</h2>
+        <label>Directory (relative)</label>
+        <input id="fileDir" placeholder="assets">
+        <label>Target Path (relative)</label>
+        <input id="uploadPath" placeholder="assets/logo.png">
+        <label>Select Local File</label>
+        <input id="uploadFile" type="file">
+        <div class="row">
+          <button class="alt" id="btnListFiles">GET /v1/sites/{id}/files</button>
+          <button id="btnUploadFile">POST /v1/sites/{id}/files/upload</button>
+          <button class="warn" id="btnDeleteFile">DELETE /v1/sites/{id}/files</button>
+        </div>
+        <pre id="fileList" class="mono" style="margin-top:10px;min-height:120px;">No file listing yet.</pre>
       </section>
 
       <section class="card">
@@ -287,6 +301,10 @@ const uiHTML = `<!doctype html>
       var fileNameInput = document.getElementById('fileName');
       var fileContentInput = document.getElementById('fileContent');
       var fileMeta = document.getElementById('fileMeta');
+      var fileDirInput = document.getElementById('fileDir');
+      var uploadPathInput = document.getElementById('uploadPath');
+      var uploadFileInput = document.getElementById('uploadFile');
+      var fileList = document.getElementById('fileList');
       var updateState = document.getElementById('updateState');
       var updateMeta = document.getElementById('updateMeta');
       var updateCheckMeta = document.getElementById('updateCheckMeta');
@@ -324,6 +342,7 @@ const uiHTML = `<!doctype html>
           sitesMeta.textContent = 'Login to load sites list.';
           sitesList.innerHTML = '<div class="site-row"><div class="muted">No data loaded.</div></div>';
           fileMeta.textContent = 'Login to use file editor.';
+          fileList.textContent = 'Login to use file upload.';
         }
       }
 
@@ -354,7 +373,41 @@ const uiHTML = `<!doctype html>
       function selectSiteForEditor(siteID, runtime, domain) {
         fileSiteIDInput.value = String(siteID || '').trim();
         fileNameInput.value = defaultFileByRuntime(runtime);
+        fileDirInput.value = '';
+        uploadPathInput.value = '';
         fileMeta.textContent = 'Selected site ' + fileSiteIDInput.value + ' (' + (domain || '-') + ')';
+      }
+
+      function toBase64(file) {
+        return new Promise(function (resolve, reject) {
+          var reader = new FileReader();
+          reader.onload = function () {
+            var raw = String(reader.result || '');
+            var idx = raw.indexOf(',');
+            resolve(idx >= 0 ? raw.slice(idx + 1) : raw);
+          };
+          reader.onerror = function () {
+            reject(reader.error || new Error('failed to read file'));
+          };
+          reader.readAsDataURL(file);
+        });
+      }
+
+      function renderFileList(payload) {
+        if (!payload || !Array.isArray(payload.items)) {
+          fileList.textContent = 'No file listing.';
+          return;
+        }
+        if (payload.items.length === 0) {
+          fileList.textContent = '(empty directory)';
+          return;
+        }
+        var lines = payload.items.map(function (item) {
+          var kind = item.type === 'dir' ? '[DIR ]' : '[FILE]';
+          var size = item.type === 'dir' ? '-' : String(item.size || 0) + ' B';
+          return kind + ' ' + (item.path || item.name || '-') + '  size=' + size;
+        });
+        fileList.textContent = lines.join('\n');
       }
 
       function startUpdatePolling() {
@@ -706,6 +759,70 @@ const uiHTML = `<!doctype html>
         });
       });
 
+      document.getElementById('btnListFiles').addEventListener('click', function () {
+        var siteID = String(fileSiteIDInput.value || '').trim();
+        if (!siteID) {
+          out.textContent = 'File upload: site ID is required.';
+          return;
+        }
+        var dir = String(fileDirInput.value || '').trim();
+        var path = '/v1/sites/' + encodeURIComponent(siteID) + '/files';
+        if (dir) {
+          path += '?dir=' + encodeURIComponent(dir);
+        }
+        callAPI(path, 'GET', null, true).then(function (payload) {
+          renderFileList(payload);
+          fileMeta.textContent = 'Listed directory: ' + (payload && payload.dir ? payload.dir : '.');
+        }).catch(function (err) {
+          out.textContent = 'Request failed: ' + err;
+        });
+      });
+
+      document.getElementById('btnUploadFile').addEventListener('click', async function () {
+        var siteID = String(fileSiteIDInput.value || '').trim();
+        if (!siteID) {
+          out.textContent = 'File upload: site ID is required.';
+          return;
+        }
+        var file = uploadFileInput.files && uploadFileInput.files[0];
+        if (!file) {
+          out.textContent = 'File upload: choose a local file first.';
+          return;
+        }
+        var targetPath = String(uploadPathInput.value || '').trim() || file.name;
+        try {
+          var b64 = await toBase64(file);
+          var payload = await callAPI('/v1/sites/' + encodeURIComponent(siteID) + '/files/upload', 'POST', {
+            path: targetPath,
+            content_base64: b64
+          }, true);
+          fileMeta.textContent = 'Uploaded ' + (payload.path || targetPath) + ' (' + (payload.size || file.size || 0) + ' bytes)';
+          uploadPathInput.value = targetPath;
+        } catch (err) {
+          out.textContent = 'Request failed: ' + err;
+        }
+      });
+
+      document.getElementById('btnDeleteFile').addEventListener('click', function () {
+        var siteID = String(fileSiteIDInput.value || '').trim();
+        if (!siteID) {
+          out.textContent = 'File delete: site ID is required.';
+          return;
+        }
+        var targetPath = String(uploadPathInput.value || '').trim();
+        if (!targetPath) {
+          out.textContent = 'File delete: target path is required.';
+          return;
+        }
+        if (!window.confirm('Delete file ' + targetPath + '?')) return;
+
+        callAPI('/v1/sites/' + encodeURIComponent(siteID) + '/files?path=' + encodeURIComponent(targetPath), 'DELETE', null, true).then(function () {
+          fileMeta.textContent = 'Deleted ' + targetPath;
+        }).catch(function (err) {
+          out.textContent = 'Request failed: ' + err;
+        });
+      });
+
       sitesList.addEventListener('click', function (evt) {
         var target = evt.target;
         if (!target || !target.getAttribute) return;
@@ -741,6 +858,14 @@ const uiHTML = `<!doctype html>
 
       rootPathInput.addEventListener('input', function () {
         rootPathDirty = true;
+      });
+
+      uploadFileInput.addEventListener('change', function () {
+        var file = uploadFileInput.files && uploadFileInput.files[0];
+        if (!file) return;
+        if (!String(uploadPathInput.value || '').trim()) {
+          uploadPathInput.value = file.name;
+        }
       });
 
       setToken(token);
