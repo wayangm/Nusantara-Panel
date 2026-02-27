@@ -15,9 +15,8 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
-ReadWritePaths=/var/lib/nusantara-panel /var/log/nusantara-panel /var/backups/nusantara-panel /etc/nginx/sites-available /etc/nginx/sites-enabled /var/www
+ReadWritePaths=/var/lib/nusantara-panel /var/log/nusantara-panel /var/backups/nusantara-panel /etc/nginx/sites-available /etc/nginx/sites-enabled /etc/letsencrypt /var/www
 LimitNOFILE=65535
 
 [Install]
 WantedBy=multi-user.target
-
