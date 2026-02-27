@@ -262,7 +262,17 @@ const uiHTML = `<!doctype html>
         <div class="row">
           <button class="alt" id="btnListFiles">GET /v1/sites/{id}/files</button>
           <button id="btnUploadFile">POST /v1/sites/{id}/files/upload</button>
+          <button class="alt" id="btnDownloadFile">GET /v1/sites/{id}/files/download</button>
           <button class="warn" id="btnDeleteFile">DELETE /v1/sites/{id}/files</button>
+        </div>
+        <label>Directory Path (relative)</label>
+        <input id="dirPath" placeholder="assets/images">
+        <div class="row">
+          <button class="alt" id="btnCreateDir">POST /v1/sites/{id}/dirs</button>
+          <button class="warn" id="btnDeleteDir">DELETE /v1/sites/{id}/dirs</button>
+        </div>
+        <div class="row">
+          <button id="btnBackupSite">POST /v1/sites/{id}/backup</button>
         </div>
         <pre id="fileList" class="mono" style="margin-top:10px;min-height:120px;">No file listing yet.</pre>
       </section>
@@ -304,6 +314,7 @@ const uiHTML = `<!doctype html>
       var fileDirInput = document.getElementById('fileDir');
       var uploadPathInput = document.getElementById('uploadPath');
       var uploadFileInput = document.getElementById('uploadFile');
+      var dirPathInput = document.getElementById('dirPath');
       var fileList = document.getElementById('fileList');
       var updateState = document.getElementById('updateState');
       var updateMeta = document.getElementById('updateMeta');
@@ -375,6 +386,7 @@ const uiHTML = `<!doctype html>
         fileNameInput.value = defaultFileByRuntime(runtime);
         fileDirInput.value = '';
         uploadPathInput.value = '';
+        dirPathInput.value = '';
         fileMeta.textContent = 'Selected site ' + fileSiteIDInput.value + ' (' + (domain || '-') + ')';
       }
 
@@ -818,6 +830,94 @@ const uiHTML = `<!doctype html>
 
         callAPI('/v1/sites/' + encodeURIComponent(siteID) + '/files?path=' + encodeURIComponent(targetPath), 'DELETE', null, true).then(function () {
           fileMeta.textContent = 'Deleted ' + targetPath;
+        }).catch(function (err) {
+          out.textContent = 'Request failed: ' + err;
+        });
+      });
+
+      document.getElementById('btnDownloadFile').addEventListener('click', async function () {
+        var siteID = String(fileSiteIDInput.value || '').trim();
+        if (!siteID) {
+          out.textContent = 'File download: site ID is required.';
+          return;
+        }
+        var targetPath = String(uploadPathInput.value || '').trim();
+        if (!targetPath) {
+          out.textContent = 'File download: target path is required.';
+          return;
+        }
+        try {
+          var res = await fetch('/v1/sites/' + encodeURIComponent(siteID) + '/files/download?path=' + encodeURIComponent(targetPath), {
+            method: 'GET',
+            headers: token ? { Authorization: 'Bearer ' + token } : {}
+          });
+          if (!res.ok) {
+            var failPayload = await res.text();
+            out.textContent = 'HTTP ' + res.status + '\n' + failPayload;
+            return;
+          }
+          var blob = await res.blob();
+          var url = URL.createObjectURL(blob);
+          var anchor = document.createElement('a');
+          anchor.href = url;
+          anchor.download = targetPath.split('/').pop() || 'download.bin';
+          document.body.appendChild(anchor);
+          anchor.click();
+          anchor.remove();
+          URL.revokeObjectURL(url);
+          fileMeta.textContent = 'Downloaded ' + targetPath;
+        } catch (err) {
+          out.textContent = 'Request failed: ' + err;
+        }
+      });
+
+      document.getElementById('btnCreateDir').addEventListener('click', function () {
+        var siteID = String(fileSiteIDInput.value || '').trim();
+        if (!siteID) {
+          out.textContent = 'Directory create: site ID is required.';
+          return;
+        }
+        var dirPath = String(dirPathInput.value || '').trim();
+        if (!dirPath) {
+          out.textContent = 'Directory create: path is required.';
+          return;
+        }
+        callAPI('/v1/sites/' + encodeURIComponent(siteID) + '/dirs', 'POST', { path: dirPath }, true).then(function () {
+          fileMeta.textContent = 'Directory created: ' + dirPath;
+        }).catch(function (err) {
+          out.textContent = 'Request failed: ' + err;
+        });
+      });
+
+      document.getElementById('btnDeleteDir').addEventListener('click', function () {
+        var siteID = String(fileSiteIDInput.value || '').trim();
+        if (!siteID) {
+          out.textContent = 'Directory delete: site ID is required.';
+          return;
+        }
+        var dirPath = String(dirPathInput.value || '').trim();
+        if (!dirPath) {
+          out.textContent = 'Directory delete: path is required.';
+          return;
+        }
+        var recursive = window.confirm('Use recursive delete for directory "' + dirPath + '"? Click OK = recursive, Cancel = non-recursive.');
+        callAPI('/v1/sites/' + encodeURIComponent(siteID) + '/dirs?path=' + encodeURIComponent(dirPath) + '&recursive=' + String(recursive), 'DELETE', null, true).then(function () {
+          fileMeta.textContent = 'Directory deleted: ' + dirPath + (recursive ? ' (recursive)' : '');
+        }).catch(function (err) {
+          out.textContent = 'Request failed: ' + err;
+        });
+      });
+
+      document.getElementById('btnBackupSite').addEventListener('click', function () {
+        var siteID = String(fileSiteIDInput.value || '').trim();
+        if (!siteID) {
+          out.textContent = 'Site backup: site ID is required.';
+          return;
+        }
+        callAPI('/v1/sites/' + encodeURIComponent(siteID) + '/backup', 'POST', {}, true).then(function (payload) {
+          if (payload && payload.file) {
+            fileMeta.textContent = 'Backup created: ' + payload.file + ' (' + (payload.size || 0) + ' bytes)';
+          }
         }).catch(function (err) {
           out.textContent = 'Request failed: ' + err;
         });

@@ -120,6 +120,10 @@ Catatan:
   - `limit` (opsional)
 - Response: daftar file/direktori pada path target.
 
+### `GET /v1/sites/{site_id}/files/download?path=assets/logo.png`
+- Auth: admin
+- Download file dari site root (binary response).
+
 ### `POST /v1/sites/{site_id}/files/upload`
 - Auth: admin
 Request:
@@ -136,6 +140,23 @@ Catatan:
 ### `DELETE /v1/sites/{site_id}/files?path=assets/logo.png`
 - Auth: admin
 - Hanya untuk file (bukan directory).
+
+### `POST /v1/sites/{site_id}/dirs`
+- Auth: admin
+Request:
+```json
+{
+  "path": "assets/images"
+}
+```
+
+### `DELETE /v1/sites/{site_id}/dirs?path=assets/images&recursive=false`
+- Auth: admin
+- `recursive=true` untuk hapus direktori beserta isinya.
+
+### `POST /v1/sites/{site_id}/backup`
+- Auth: admin
+- Membuat backup zip dari konten root site ke `NUSANTARA_BACKUP_DIR/sites/<domain>/`.
 
 ### `DELETE /v1/sites/{site_id}`
 - Auth: admin

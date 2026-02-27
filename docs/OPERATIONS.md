@@ -99,6 +99,33 @@ curl -sS -X DELETE "http://127.0.0.1:8080/v1/sites/<SITE_ID>/files?path=assets/r
   -H "Authorization: Bearer <TOKEN>"
 ```
 
+Download:
+```bash
+curl -sS "http://127.0.0.1:8080/v1/sites/<SITE_ID>/files/download?path=assets/readme.txt" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -o readme.txt
+```
+
+Create directory:
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v1/sites/<SITE_ID>/dirs \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"path":"assets/images"}'
+```
+
+Delete directory recursive:
+```bash
+curl -sS -X DELETE "http://127.0.0.1:8080/v1/sites/<SITE_ID>/dirs?path=assets/images&recursive=true" \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+Backup content zip:
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v1/sites/<SITE_ID>/backup \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
 ## 6. Database provisioning
 List database:
 ```bash

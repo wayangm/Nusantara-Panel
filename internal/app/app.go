@@ -94,7 +94,7 @@ func (a *App) Run() error {
 		_ = jobService.Stop(stopCtx)
 	}()
 
-	siteService := sitessvc.NewService(repo, jobService)
+	siteService := sitessvc.NewService(repo, jobService, a.cfg.BackupDir, a.cfg.ProvisionApply)
 	auditService := audit.NewService(repo, a.logger)
 	servicesMonitor := monitor.NewServicesMonitor(nil, 3*time.Second)
 	sslService := sslsvc.NewService(a.cfg.ProvisionApply, a.cfg.CertbotCommand, 2*time.Minute, a.logger)

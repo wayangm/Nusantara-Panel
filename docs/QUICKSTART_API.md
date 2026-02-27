@@ -75,6 +75,33 @@ curl -sS -X DELETE "http://127.0.0.1:8080/v1/sites/<SITE_ID>/files?path=assets/l
   -H "Authorization: Bearer <TOKEN>"
 ```
 
+Download file:
+```bash
+curl -sS "http://127.0.0.1:8080/v1/sites/<SITE_ID>/files/download?path=assets/logo.txt" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -o logo.txt
+```
+
+Create directory:
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v1/sites/<SITE_ID>/dirs \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"path":"assets/images"}'
+```
+
+Delete directory (recursive):
+```bash
+curl -sS -X DELETE "http://127.0.0.1:8080/v1/sites/<SITE_ID>/dirs?path=assets/images&recursive=true" \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+Backup site content:
+```bash
+curl -sS -X POST http://127.0.0.1:8080/v1/sites/<SITE_ID>/backup \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
 ## 8. Lihat job, audit, dan monitor
 ```bash
 curl -sS http://127.0.0.1:8080/v1/jobs -H "Authorization: Bearer <TOKEN>"

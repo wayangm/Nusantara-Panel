@@ -68,8 +68,12 @@ Endpoint utama:
 - `GET /v1/sites/{site_id}/content`
 - `PUT /v1/sites/{site_id}/content`
 - `GET /v1/sites/{site_id}/files`
+- `GET /v1/sites/{site_id}/files/download`
 - `POST /v1/sites/{site_id}/files/upload`
 - `DELETE /v1/sites/{site_id}/files`
+- `POST /v1/sites/{site_id}/dirs`
+- `DELETE /v1/sites/{site_id}/dirs`
+- `POST /v1/sites/{site_id}/backup`
 - `GET /v1/jobs`
 - `GET /v1/db/databases`
 - `POST /v1/db/databases`
@@ -171,6 +175,7 @@ Sudah tersedia:
 - CRUD site dasar (create/list/get/delete async deprovision).
 - File editor dasar site (`GET/PUT /v1/sites/{site_id}/content`) untuk file `index.html`, `index.htm`, `index.php`.
 - Upload/list/delete file dasar per-site via API/UI (`/v1/sites/{site_id}/files*`) dengan validasi relative path.
+- Download file, create/delete folder, dan backup konten site (zip) via API/UI.
 - job worker async (queued -> running -> success/failed).
 - provisioning Nginx untuk `create site`:
   - render `server` config ke `sites-available`,

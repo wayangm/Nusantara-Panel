@@ -1,10 +1,12 @@
 package sites
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -27,6 +29,8 @@ var (
 	ErrInvalidPath    = errors.New("invalid path")
 	ErrInvalidBase64  = errors.New("invalid base64 content")
 	ErrFileTooLarge   = errors.New("file too large")
+	ErrNotDirectory   = errors.New("path is not a directory")
+	ErrDirNotEmpty    = errors.New("directory is not empty")
 )
 
 var domainRegex = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
@@ -56,8 +60,10 @@ type SiteFileEntry struct {
 }
 
 type Service struct {
-	repo   store.Repository
-	jobSvc *jobs.Service
+	repo      store.Repository
+	jobSvc    *jobs.Service
+	backupDir string
+	apply     bool
 }
 
 type CreateSiteInput struct {
@@ -66,10 +72,12 @@ type CreateSiteInput struct {
 	Runtime  string
 }
 
-func NewService(repo store.Repository, jobSvc *jobs.Service) *Service {
+func NewService(repo store.Repository, jobSvc *jobs.Service, backupDir string, apply bool) *Service {
 	return &Service{
-		repo:   repo,
-		jobSvc: jobSvc,
+		repo:      repo,
+		jobSvc:    jobSvc,
+		backupDir: backupDir,
+		apply:     apply,
 	}
 }
 
@@ -327,6 +335,159 @@ func (s *Service) DeleteSiteFile(ctx context.Context, id, relPath string) (store
 	return site, cleanPath, nil
 }
 
+func (s *Service) DownloadSiteFile(ctx context.Context, id, relPath string) (store.Site, string, []byte, error) {
+	site, err := s.repo.GetSiteByID(ctx, id)
+	if err != nil {
+		return store.Site{}, "", nil, err
+	}
+
+	cleanPath, err := normalizeRelativePath(relPath, false)
+	if err != nil {
+		return store.Site{}, "", nil, err
+	}
+	fullPath := filepath.Join(site.RootPath, filepath.FromSlash(cleanPath))
+	if !isWithinRoot(site.RootPath, fullPath) {
+		return store.Site{}, "", nil, ErrInvalidPath
+	}
+
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return store.Site{}, "", nil, store.ErrNotFound
+		}
+		return store.Site{}, "", nil, fmt.Errorf("stat file: %w", err)
+	}
+	if info.IsDir() {
+		return store.Site{}, "", nil, ErrInvalidPath
+	}
+
+	content, err := os.ReadFile(fullPath)
+	if err != nil {
+		return store.Site{}, "", nil, fmt.Errorf("read file: %w", err)
+	}
+	return site, cleanPath, content, nil
+}
+
+func (s *Service) CreateSiteDirectory(ctx context.Context, id, relPath string) (store.Site, string, error) {
+	site, err := s.repo.GetSiteByID(ctx, id)
+	if err != nil {
+		return store.Site{}, "", err
+	}
+
+	cleanPath, err := normalizeRelativePath(relPath, false)
+	if err != nil {
+		return store.Site{}, "", err
+	}
+	fullPath := filepath.Join(site.RootPath, filepath.FromSlash(cleanPath))
+	if !isWithinRoot(site.RootPath, fullPath) {
+		return store.Site{}, "", ErrInvalidPath
+	}
+
+	if err := os.MkdirAll(fullPath, 0o755); err != nil {
+		return store.Site{}, "", fmt.Errorf("create directory: %w", err)
+	}
+	return site, cleanPath, nil
+}
+
+func (s *Service) DeleteSiteDirectory(ctx context.Context, id, relPath string, recursive bool) (store.Site, string, error) {
+	site, err := s.repo.GetSiteByID(ctx, id)
+	if err != nil {
+		return store.Site{}, "", err
+	}
+
+	cleanPath, err := normalizeRelativePath(relPath, false)
+	if err != nil {
+		return store.Site{}, "", err
+	}
+	fullPath := filepath.Join(site.RootPath, filepath.FromSlash(cleanPath))
+	if !isWithinRoot(site.RootPath, fullPath) {
+		return store.Site{}, "", ErrInvalidPath
+	}
+
+	info, err := os.Stat(fullPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return store.Site{}, "", store.ErrNotFound
+		}
+		return store.Site{}, "", fmt.Errorf("stat directory: %w", err)
+	}
+	if !info.IsDir() {
+		return store.Site{}, "", ErrNotDirectory
+	}
+
+	if recursive {
+		if err := os.RemoveAll(fullPath); err != nil {
+			return store.Site{}, "", fmt.Errorf("delete directory: %w", err)
+		}
+		return site, cleanPath, nil
+	}
+
+	if err := os.Remove(fullPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return store.Site{}, "", store.ErrNotFound
+		}
+		if errors.Is(err, os.ErrPermission) {
+			return store.Site{}, "", fmt.Errorf("delete directory: %w", err)
+		}
+		return store.Site{}, "", ErrDirNotEmpty
+	}
+	return site, cleanPath, nil
+}
+
+type SiteContentBackupResult struct {
+	File      string    `json:"file"`
+	CreatedAt time.Time `json:"created_at"`
+	Size      int64     `json:"size"`
+}
+
+func (s *Service) BackupSiteContent(ctx context.Context, id string) (store.Site, SiteContentBackupResult, error) {
+	site, err := s.repo.GetSiteByID(ctx, id)
+	if err != nil {
+		return store.Site{}, SiteContentBackupResult{}, err
+	}
+	if strings.TrimSpace(s.backupDir) == "" {
+		return store.Site{}, SiteContentBackupResult{}, errors.New("backup dir is empty")
+	}
+
+	now := time.Now().UTC()
+	fileName := fmt.Sprintf("site_content_%s_%s.zip", sanitizeDomainForFile(site.Domain), now.Format("20060102_150405"))
+	targetDir := filepath.Join(s.backupDir, "sites", sanitizeDomainForFile(site.Domain))
+	target := filepath.Join(targetDir, fileName)
+
+	if !s.apply {
+		return site, SiteContentBackupResult{
+			File:      target,
+			CreatedAt: now,
+			Size:      0,
+		}, nil
+	}
+
+	if err := os.MkdirAll(targetDir, 0o750); err != nil {
+		return store.Site{}, SiteContentBackupResult{}, fmt.Errorf("create backup dir: %w", err)
+	}
+
+	tmp := target + ".tmp"
+	if err := zipDirectory(site.RootPath, tmp); err != nil {
+		_ = os.Remove(tmp)
+		return store.Site{}, SiteContentBackupResult{}, err
+	}
+	if err := os.Rename(tmp, target); err != nil {
+		_ = os.Remove(tmp)
+		return store.Site{}, SiteContentBackupResult{}, fmt.Errorf("move backup file: %w", err)
+	}
+
+	info, err := os.Stat(target)
+	if err != nil {
+		return store.Site{}, SiteContentBackupResult{}, fmt.Errorf("stat backup file: %w", err)
+	}
+
+	return site, SiteContentBackupResult{
+		File:      target,
+		CreatedAt: now,
+		Size:      info.Size(),
+	}, nil
+}
+
 func normalizeDomain(in string) string {
 	return strings.ToLower(strings.TrimSpace(strings.TrimSuffix(in, ".")))
 }
@@ -437,4 +598,92 @@ func isWithinRoot(rootPath, targetPath string) bool {
 		return true
 	}
 	return strings.HasPrefix(target, root+string(os.PathSeparator))
+}
+
+func sanitizeDomainForFile(domain string) string {
+	clean := strings.ToLower(strings.TrimSpace(domain))
+	clean = strings.ReplaceAll(clean, "..", ".")
+	clean = strings.ReplaceAll(clean, "/", "-")
+	clean = strings.ReplaceAll(clean, "\\", "-")
+	if clean == "" {
+		return "site"
+	}
+	return clean
+}
+
+func zipDirectory(rootPath, targetZip string) error {
+	rootInfo, err := os.Stat(rootPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return store.ErrNotFound
+		}
+		return fmt.Errorf("stat site root: %w", err)
+	}
+	if !rootInfo.IsDir() {
+		return ErrNotDirectory
+	}
+
+	out, err := os.OpenFile(targetZip, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o640)
+	if err != nil {
+		return fmt.Errorf("create zip file: %w", err)
+	}
+	defer out.Close()
+
+	zw := zip.NewWriter(out)
+
+	err = filepath.Walk(rootPath, func(current string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if current == rootPath {
+			return nil
+		}
+
+		rel, relErr := filepath.Rel(rootPath, current)
+		if relErr != nil {
+			return relErr
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == "." || rel == "" {
+			return nil
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
+
+		if info.IsDir() {
+			_, dirErr := zw.Create(rel + "/")
+			return dirErr
+		}
+
+		header, hErr := zip.FileInfoHeader(info)
+		if hErr != nil {
+			return hErr
+		}
+		header.Name = rel
+		header.Method = zip.Deflate
+		writer, cErr := zw.CreateHeader(header)
+		if cErr != nil {
+			return cErr
+		}
+
+		f, oErr := os.Open(current)
+		if oErr != nil {
+			return oErr
+		}
+		_, cpErr := io.Copy(writer, f)
+		closeErr := f.Close()
+		if cpErr != nil {
+			return cpErr
+		}
+		return closeErr
+	})
+	if err != nil {
+		return fmt.Errorf("zip site content: %w", err)
+	}
+
+	if err := zw.Close(); err != nil {
+		return fmt.Errorf("close zip writer: %w", err)
+	}
+	return nil
 }

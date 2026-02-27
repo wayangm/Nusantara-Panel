@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"runtime"
 	"strconv"
 	"strings"
@@ -81,8 +83,12 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /v1/sites/{siteID}/content", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleGetSiteContent)))
 	mux.Handle("PUT /v1/sites/{siteID}/content", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleUpdateSiteContent)))
 	mux.Handle("GET /v1/sites/{siteID}/files", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleListSiteFiles)))
+	mux.Handle("GET /v1/sites/{siteID}/files/download", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleDownloadSiteFile)))
 	mux.Handle("POST /v1/sites/{siteID}/files/upload", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleUploadSiteFile)))
 	mux.Handle("DELETE /v1/sites/{siteID}/files", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleDeleteSiteFile)))
+	mux.Handle("POST /v1/sites/{siteID}/dirs", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleCreateSiteDir)))
+	mux.Handle("DELETE /v1/sites/{siteID}/dirs", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleDeleteSiteDir)))
+	mux.Handle("POST /v1/sites/{siteID}/backup", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleBackupSiteContent)))
 	mux.Handle("DELETE /v1/sites/{siteID}", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleDeleteSite)))
 
 	mux.Handle("GET /v1/jobs", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleListJobs)))
@@ -284,6 +290,10 @@ type uploadSiteFileRequest struct {
 	ContentBase64 string `json:"content_base64"`
 }
 
+type siteDirRequest struct {
+	Path string `json:"path"`
+}
+
 func (a *API) handleGetSiteContent(w http.ResponseWriter, r *http.Request) {
 	siteID := r.PathValue("siteID")
 	file := r.URL.Query().Get("file")
@@ -378,6 +388,33 @@ func (a *API) handleListSiteFiles(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *API) handleDownloadSiteFile(w http.ResponseWriter, r *http.Request) {
+	siteID := r.PathValue("siteID")
+	relPath := r.URL.Query().Get("path")
+	_, cleanPath, content, err := a.sites.DownloadSiteFile(r.Context(), siteID, relPath)
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			writeError(w, http.StatusNotFound, "site or file not found")
+		case errors.Is(err, sitessvc.ErrInvalidPath):
+			writeError(w, http.StatusBadRequest, err.Error())
+		default:
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+		return
+	}
+
+	name := path.Base(cleanPath)
+	contentType := mime.TypeByExtension(path.Ext(cleanPath))
+	if strings.TrimSpace(contentType) == "" {
+		contentType = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(content)
+}
+
 func (a *API) handleUploadSiteFile(w http.ResponseWriter, r *http.Request) {
 	user, ok := r.Context().Value(principalContextKey{}).(store.User)
 	if !ok {
@@ -451,6 +488,123 @@ func (a *API) handleDeleteSiteFile(w http.ResponseWriter, r *http.Request) {
 		"site_id": site.ID,
 		"domain":  site.Domain,
 		"path":    deletedPath,
+	})
+}
+
+func (a *API) handleCreateSiteDir(w http.ResponseWriter, r *http.Request) {
+	user, ok := r.Context().Value(principalContextKey{}).(store.User)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	siteID := r.PathValue("siteID")
+	var req siteDirRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	site, relPath, err := a.sites.CreateSiteDirectory(r.Context(), siteID, req.Path)
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			writeError(w, http.StatusNotFound, "site not found")
+		case errors.Is(err, sitessvc.ErrInvalidPath):
+			writeError(w, http.StatusBadRequest, err.Error())
+		default:
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+		return
+	}
+
+	a.audit.Record(r.Context(), user.ID, "site.dir.create", "site", site.ID, map[string]any{
+		"path": relPath,
+	})
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"status":  "ok",
+		"site_id": site.ID,
+		"domain":  site.Domain,
+		"path":    relPath,
+	})
+}
+
+func (a *API) handleDeleteSiteDir(w http.ResponseWriter, r *http.Request) {
+	user, ok := r.Context().Value(principalContextKey{}).(store.User)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	siteID := r.PathValue("siteID")
+	relPath := r.URL.Query().Get("path")
+	recursive := false
+	if raw := strings.TrimSpace(r.URL.Query().Get("recursive")); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid recursive flag")
+			return
+		}
+		recursive = parsed
+	}
+
+	site, deletedPath, err := a.sites.DeleteSiteDirectory(r.Context(), siteID, relPath, recursive)
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			writeError(w, http.StatusNotFound, "site or directory not found")
+		case errors.Is(err, sitessvc.ErrInvalidPath), errors.Is(err, sitessvc.ErrNotDirectory):
+			writeError(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, sitessvc.ErrDirNotEmpty):
+			writeError(w, http.StatusConflict, err.Error())
+		default:
+			writeError(w, http.StatusInternalServerError, "internal error")
+		}
+		return
+	}
+
+	a.audit.Record(r.Context(), user.ID, "site.dir.delete", "site", site.ID, map[string]any{
+		"path":      deletedPath,
+		"recursive": recursive,
+	})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":    "ok",
+		"site_id":   site.ID,
+		"domain":    site.Domain,
+		"path":      deletedPath,
+		"recursive": recursive,
+	})
+}
+
+func (a *API) handleBackupSiteContent(w http.ResponseWriter, r *http.Request) {
+	user, ok := r.Context().Value(principalContextKey{}).(store.User)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	siteID := r.PathValue("siteID")
+	site, result, err := a.sites.BackupSiteContent(r.Context(), siteID)
+	if err != nil {
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			writeError(w, http.StatusNotFound, "site not found")
+		default:
+			writeError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	a.audit.Record(r.Context(), user.ID, "site.backup.content", "site", site.ID, map[string]any{
+		"file": result.File,
+		"size": result.Size,
+	})
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"status":     "ok",
+		"site_id":    site.ID,
+		"domain":     site.Domain,
+		"file":       result.File,
+		"size":       result.Size,
+		"created_at": result.CreatedAt,
 	})
 }
 
