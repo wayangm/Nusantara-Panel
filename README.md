@@ -34,7 +34,8 @@ Saat startup pertama, service akan membuat akun admin bootstrap:
 - `username`: `admin`
 - `password`: sesuai `NUSANTARA_BOOTSTRAP_ADMIN_PASSWORD`
 
-Pada installer Ubuntu, password bootstrap di-generate otomatis secara acak dan ditampilkan di output install.
+Pada installer Ubuntu, password bootstrap di-generate otomatis saat setup awal (atau saat env password masih default placeholder) dan ditampilkan di output install.
+Jika service sudah punya user admin di state DB, reinstall tidak mereset password login akun admin yang sudah ada.
 
 Ganti lewat env:
 - `NUSANTARA_BOOTSTRAP_ADMIN_USERNAME`

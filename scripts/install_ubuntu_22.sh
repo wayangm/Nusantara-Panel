@@ -92,31 +92,38 @@ fi
 install -m 0755 "${BINARY_SRC}" /usr/local/bin/nusantarad
 install -m 0644 "${SERVICE_UNIT_SRC}" /etc/systemd/system/nusantara-panel.service
 
-BOOTSTRAP_PASSWORD="$(openssl rand -base64 18 | tr -d '\n' | tr '/+' 'AB')"
-if [[ ! -f /etc/nusantara-panel/nusantara-panel.env ]]; then
-  install -m 0640 "${ENV_EXAMPLE_SRC}" /etc/nusantara-panel/nusantara-panel.env
+ENV_FILE="/etc/nusantara-panel/nusantara-panel.env"
+CREATED_ENV_FILE="false"
+if [[ ! -f "${ENV_FILE}" ]]; then
+  install -m 0640 "${ENV_EXAMPLE_SRC}" "${ENV_FILE}"
+  CREATED_ENV_FILE="true"
 fi
 
-if grep -q '^NUSANTARA_BOOTSTRAP_ADMIN_PASSWORD=' /etc/nusantara-panel/nusantara-panel.env; then
-  sed -i "s|^NUSANTARA_BOOTSTRAP_ADMIN_PASSWORD=.*|NUSANTARA_BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_PASSWORD}|" /etc/nusantara-panel/nusantara-panel.env
+BOOTSTRAP_PASSWORD=""
+CURRENT_BOOTSTRAP_PASSWORD="$(sed -n 's/^NUSANTARA_BOOTSTRAP_ADMIN_PASSWORD=//p' "${ENV_FILE}" | head -n1)"
+if [[ "${CREATED_ENV_FILE}" == "true" ]] || [[ -z "${CURRENT_BOOTSTRAP_PASSWORD}" ]] || [[ "${CURRENT_BOOTSTRAP_PASSWORD}" == "CHANGE_ME_STRONG_PASSWORD" ]]; then
+  BOOTSTRAP_PASSWORD="$(openssl rand -base64 18 | tr -d '\n' | tr '/+' 'AB')"
+  if grep -q '^NUSANTARA_BOOTSTRAP_ADMIN_PASSWORD=' "${ENV_FILE}"; then
+    sed -i "s|^NUSANTARA_BOOTSTRAP_ADMIN_PASSWORD=.*|NUSANTARA_BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_PASSWORD}|" "${ENV_FILE}"
+  else
+    echo "NUSANTARA_BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_PASSWORD}" >> "${ENV_FILE}"
+  fi
+fi
+
+if grep -q '^NUSANTARA_PROVISION_APPLY=' "${ENV_FILE}"; then
+  sed -i "s|^NUSANTARA_PROVISION_APPLY=.*|NUSANTARA_PROVISION_APPLY=true|" "${ENV_FILE}"
 else
-  echo "NUSANTARA_BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_PASSWORD}" >> /etc/nusantara-panel/nusantara-panel.env
+  echo "NUSANTARA_PROVISION_APPLY=true" >> "${ENV_FILE}"
 fi
 
-if grep -q '^NUSANTARA_PROVISION_APPLY=' /etc/nusantara-panel/nusantara-panel.env; then
-  sed -i "s|^NUSANTARA_PROVISION_APPLY=.*|NUSANTARA_PROVISION_APPLY=true|" /etc/nusantara-panel/nusantara-panel.env
+if grep -q '^NUSANTARA_BACKUP_DIR=' "${ENV_FILE}"; then
+  sed -i "s|^NUSANTARA_BACKUP_DIR=.*|NUSANTARA_BACKUP_DIR=/var/backups/nusantara-panel|" "${ENV_FILE}"
 else
-  echo "NUSANTARA_PROVISION_APPLY=true" >> /etc/nusantara-panel/nusantara-panel.env
+  echo "NUSANTARA_BACKUP_DIR=/var/backups/nusantara-panel" >> "${ENV_FILE}"
 fi
 
-if grep -q '^NUSANTARA_BACKUP_DIR=' /etc/nusantara-panel/nusantara-panel.env; then
-  sed -i "s|^NUSANTARA_BACKUP_DIR=.*|NUSANTARA_BACKUP_DIR=/var/backups/nusantara-panel|" /etc/nusantara-panel/nusantara-panel.env
-else
-  echo "NUSANTARA_BACKUP_DIR=/var/backups/nusantara-panel" >> /etc/nusantara-panel/nusantara-panel.env
-fi
-
-chown root:nusantara /etc/nusantara-panel/nusantara-panel.env
-chmod 0640 /etc/nusantara-panel/nusantara-panel.env
+chown root:nusantara "${ENV_FILE}"
+chmod 0640 "${ENV_FILE}"
 
 systemctl enable nginx mariadb redis-server
 systemctl restart nginx mariadb redis-server
@@ -128,4 +135,8 @@ systemctl restart nusantara-panel
 echo "Nusantara Panel installed and started."
 echo "Check status: systemctl status nusantara-panel"
 echo "Bootstrap admin username: admin"
-echo "Bootstrap admin password: ${BOOTSTRAP_PASSWORD}"
+if [[ -n "${BOOTSTRAP_PASSWORD}" ]]; then
+  echo "Bootstrap admin password: ${BOOTSTRAP_PASSWORD}"
+else
+  echo "Bootstrap admin password: unchanged (existing state user remains active)"
+fi

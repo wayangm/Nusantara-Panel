@@ -44,6 +44,7 @@ UI preview:
 ## 3. First login
 - Bootstrap username: `admin`
 - Bootstrap password: output installer
+- Catatan: bootstrap password hanya dipakai untuk seed admin awal saat user belum ada di state DB.
 - Wajib segera panggil endpoint `POST /v1/auth/change-password`.
 
 ## 4. Create first site
