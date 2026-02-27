@@ -100,6 +100,18 @@ install_go() {
 
 install_go
 
+prepare_go_env() {
+  if [[ -z "${HOME:-}" ]]; then
+    export HOME="/root"
+  fi
+  export GOPATH="${GOPATH:-${HOME}/go}"
+  export GOMODCACHE="${GOMODCACHE:-${GOPATH}/pkg/mod}"
+  export GOCACHE="${GOCACHE:-${HOME}/.cache/go-build}"
+  mkdir -p "${GOPATH}/bin" "${GOMODCACHE}" "${GOCACHE}"
+}
+
+prepare_go_env
+
 resolve_source_dir() {
   local script_dir parent_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
