@@ -48,6 +48,11 @@ Ganti lewat env:
 - `NUSANTARA_CERTBOT_COMMAND`
 - `NUSANTARA_MYSQL_COMMAND`
 - `NUSANTARA_BACKUP_DIR`
+- `NUSANTARA_UPDATE_REPO_URL`
+- `NUSANTARA_UPDATE_BRANCH`
+- `NUSANTARA_UPDATE_SCRIPT_URL`
+- `NUSANTARA_UPDATE_UNIT_NAME`
+- `NUSANTARA_UPDATE_LOG_LINES`
 
 Endpoint utama:
 - `GET /healthz`
@@ -68,6 +73,8 @@ Endpoint utama:
 - `POST /v1/ssl/issue`
 - `POST /v1/ssl/renew`
 - `GET /v1/audit/logs`
+- `POST /v1/panel/update`
+- `GET /v1/panel/update/status`
 
 ## Build cepat
 ```bash

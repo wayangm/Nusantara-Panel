@@ -108,6 +108,15 @@ const uiHTML = `<!doctype html>
       </section>
 
       <section class="card">
+        <h2>Panel Update</h2>
+        <p>Run update without SSH (admin only).</p>
+        <div class="row">
+          <button id="btnStartUpdate">POST /v1/panel/update</button>
+          <button class="alt" id="btnUpdateStatus">GET /v1/panel/update/status</button>
+        </div>
+      </section>
+
+      <section class="card">
         <h2>Create Site</h2>
         <label>Domain</label>
         <input id="domain" placeholder="example.com">
@@ -222,6 +231,16 @@ const uiHTML = `<!doctype html>
           out.textContent = 'Request failed: ' + err;
         });
       });
+      document.getElementById('btnStartUpdate').addEventListener('click', function () {
+        callAPI('/v1/panel/update', 'POST', {}, true).catch(function (err) {
+          out.textContent = 'Request failed: ' + err;
+        });
+      });
+      document.getElementById('btnUpdateStatus').addEventListener('click', function () {
+        callAPI('/v1/panel/update/status', 'GET', null, true).catch(function (err) {
+          out.textContent = 'Request failed: ' + err;
+        });
+      });
 
       document.getElementById('btnCreateSite').addEventListener('click', function () {
         callAPI('/v1/sites', 'POST', {
@@ -245,4 +264,3 @@ func WebUI(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(uiHTML))
 }
-

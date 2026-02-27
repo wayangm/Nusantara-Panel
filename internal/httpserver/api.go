@@ -1,4 +1,4 @@
-﻿package httpserver
+package httpserver
 
 import (
 	"context"
@@ -24,6 +24,7 @@ import (
 	sitessvc "nusantara/internal/service/sites"
 	sslsvc "nusantara/internal/ssl"
 	"nusantara/internal/store"
+	"nusantara/internal/updater"
 )
 
 type API struct {
@@ -36,6 +37,7 @@ type API struct {
 	ssl             *sslsvc.Service
 	servicesMonitor *monitor.ServicesMonitor
 	loginLimiter    *ratelimit.LoginLimiter
+	updater         *updater.Service
 }
 
 type principalContextKey struct{}
@@ -50,6 +52,7 @@ func NewAPI(
 	backup *backupsvc.Service,
 	ssl *sslsvc.Service,
 	servicesMonitor *monitor.ServicesMonitor,
+	updaterSvc *updater.Service,
 ) *API {
 	return &API{
 		auth:            auth,
@@ -61,6 +64,7 @@ func NewAPI(
 		ssl:             ssl,
 		servicesMonitor: servicesMonitor,
 		loginLimiter:    ratelimit.NewLoginLimiter(5, 5*time.Minute),
+		updater:         updaterSvc,
 	}
 }
 
@@ -89,6 +93,8 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 
 	mux.Handle("GET /v1/monitor/host", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleMonitorHost)))
 	mux.Handle("GET /v1/monitor/services", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleMonitorServices)))
+	mux.Handle("POST /v1/panel/update", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleStartPanelUpdate)))
+	mux.Handle("GET /v1/panel/update/status", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handlePanelUpdateStatus)))
 }
 
 type loginRequest struct {
@@ -570,6 +576,55 @@ func (a *API) handleMonitorServices(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *API) handleStartPanelUpdate(w http.ResponseWriter, r *http.Request) {
+	user, ok := r.Context().Value(principalContextKey{}).(store.User)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if a.updater == nil {
+		writeError(w, http.StatusInternalServerError, "panel updater is not configured")
+		return
+	}
+
+	result, err := a.updater.Start(r.Context())
+	if err != nil {
+		switch {
+		case errors.Is(err, updater.ErrAlreadyRunning):
+			writeError(w, http.StatusConflict, "panel update is already running")
+		case errors.Is(err, updater.ErrDisabled):
+			writeError(w, http.StatusBadRequest, "panel updater is disabled")
+		default:
+			writeError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	a.audit.Record(r.Context(), user.ID, "panel.update.start", "system", result.Unit, map[string]any{
+		"repo_url":   result.RepoURL,
+		"branch":     result.Branch,
+		"script_url": result.ScriptURL,
+	})
+	writeJSON(w, http.StatusAccepted, result)
+}
+
+func (a *API) handlePanelUpdateStatus(w http.ResponseWriter, r *http.Request) {
+	if a.updater == nil {
+		writeError(w, http.StatusInternalServerError, "panel updater is not configured")
+		return
+	}
+	status, err := a.updater.Status(r.Context())
+	if err != nil {
+		switch {
+		case errors.Is(err, updater.ErrDisabled):
+			writeError(w, http.StatusBadRequest, "panel updater is disabled")
+		default:
+			writeError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
 func (a *API) requireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, err := bearerToken(r.Header.Get("Authorization"))
@@ -664,4 +719,3 @@ func loginLimitKey(r *http.Request, username string) string {
 	username = strings.ToLower(strings.TrimSpace(username))
 	return ip + ":" + username
 }
-

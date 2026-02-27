@@ -166,6 +166,25 @@ Request:
 - Auth: admin
 Response item status diambil dari `systemctl is-active`.
 
+### `POST /v1/panel/update`
+- Auth: admin
+- Trigger update panel melalui transient unit systemd (`nusantara-panel-updater.service`).
+- Operasi ini asynchronous; panel service dapat restart saat update selesai.
+Response:
+```json
+{
+  "unit": "nusantara-panel-updater.service",
+  "repo_url": "https://github.com/wayangm/Nusantara-Panel.git",
+  "branch": "main",
+  "script_url": "https://raw.githubusercontent.com/wayangm/Nusantara-Panel/main/install.sh",
+  "started_at": "2026-02-27T14:00:00Z"
+}
+```
+
+### `GET /v1/panel/update/status`
+- Auth: admin
+- Menampilkan state unit updater + potongan log terbaru dari journal.
+
 ## Backlog endpoint berikutnya
 - `GET /v1/backup/list`
 

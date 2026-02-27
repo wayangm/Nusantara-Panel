@@ -1,4 +1,4 @@
-﻿package app
+package app
 
 import (
 	"context"
@@ -23,6 +23,7 @@ import (
 	sitessvc "nusantara/internal/service/sites"
 	sslsvc "nusantara/internal/ssl"
 	"nusantara/internal/store/filedb"
+	"nusantara/internal/updater"
 )
 
 type App struct {
@@ -99,7 +100,14 @@ func (a *App) Run() error {
 	sslService := sslsvc.NewService(a.cfg.ProvisionApply, a.cfg.CertbotCommand, 2*time.Minute, a.logger)
 	dbService := dbsvc.NewService(a.cfg.ProvisionApply, a.cfg.MySQLCommand, 10*time.Second, a.logger)
 	backupService := backupsvc.NewService(a.cfg.ProvisionApply, a.cfg.DBPath, a.cfg.BackupDir, a.logger)
-	api := httpserver.NewAPI(authService, siteService, jobService, auditService, dbService, backupService, sslService, servicesMonitor)
+	updaterService := updater.NewService(a.cfg.ProvisionApply, updater.Config{
+		RepoURL:   a.cfg.UpdateRepoURL,
+		Branch:    a.cfg.UpdateBranch,
+		ScriptURL: a.cfg.UpdateScriptURL,
+		UnitName:  a.cfg.UpdateUnitName,
+		LogLines:  a.cfg.UpdateLogLines,
+	}, a.logger)
+	api := httpserver.NewAPI(authService, siteService, jobService, auditService, dbService, backupService, sslService, servicesMonitor, updaterService)
 
 	server := &http.Server{
 		Addr:         a.cfg.Address,
@@ -132,4 +140,3 @@ func (a *App) Run() error {
 	a.logger.Printf("shutting down")
 	return server.Shutdown(shutdownCtx)
 }
-

@@ -1,4 +1,4 @@
-﻿package config
+package config
 
 import (
 	"fmt"
@@ -24,6 +24,11 @@ const (
 	defaultTokenTTLHours          = 24
 	defaultBootstrapAdminUsername = "admin"
 	defaultBootstrapAdminPassword = ""
+	defaultUpdateRepoURL          = "https://github.com/wayangm/Nusantara-Panel.git"
+	defaultUpdateBranch           = "main"
+	defaultUpdateScriptURL        = "https://raw.githubusercontent.com/wayangm/Nusantara-Panel/main/install.sh"
+	defaultUpdateUnitName         = "nusantara-panel-updater"
+	defaultUpdateLogLines         = 80
 )
 
 type Config struct {
@@ -45,6 +50,12 @@ type Config struct {
 
 	BootstrapAdminUsername string
 	BootstrapAdminPassword string
+
+	UpdateRepoURL   string
+	UpdateBranch    string
+	UpdateScriptURL string
+	UpdateUnitName  string
+	UpdateLogLines  int
 }
 
 func LoadFromEnv() (Config, error) {
@@ -66,6 +77,11 @@ func LoadFromEnv() (Config, error) {
 
 		BootstrapAdminUsername: getenv("NUSANTARA_BOOTSTRAP_ADMIN_USERNAME", defaultBootstrapAdminUsername),
 		BootstrapAdminPassword: getenv("NUSANTARA_BOOTSTRAP_ADMIN_PASSWORD", defaultBootstrapAdminPassword),
+		UpdateRepoURL:          getenv("NUSANTARA_UPDATE_REPO_URL", defaultUpdateRepoURL),
+		UpdateBranch:           getenv("NUSANTARA_UPDATE_BRANCH", defaultUpdateBranch),
+		UpdateScriptURL:        getenv("NUSANTARA_UPDATE_SCRIPT_URL", defaultUpdateScriptURL),
+		UpdateUnitName:         getenv("NUSANTARA_UPDATE_UNIT_NAME", defaultUpdateUnitName),
+		UpdateLogLines:         defaultUpdateLogLines,
 	}
 
 	if v := os.Getenv("NUSANTARA_SHUTDOWN_SECS"); v != "" {
@@ -100,6 +116,14 @@ func LoadFromEnv() (Config, error) {
 		cfg.ProvisionApply = apply
 	}
 
+	if v := os.Getenv("NUSANTARA_UPDATE_LOG_LINES"); v != "" {
+		lines, err := strconv.Atoi(v)
+		if err != nil || lines < 1 {
+			return Config{}, fmt.Errorf("invalid NUSANTARA_UPDATE_LOG_LINES: %q", v)
+		}
+		cfg.UpdateLogLines = lines
+	}
+
 	cfg.DBPath = getenv("NUSANTARA_DB_PATH", filepath.Join(cfg.DataDir, "nusantara_state.json"))
 
 	return cfg, nil
@@ -111,4 +135,3 @@ func getenv(key, fallback string) string {
 	}
 	return fallback
 }
-
