@@ -77,6 +77,7 @@ Endpoint utama:
 - `POST /v1/panel/update`
 - `GET /v1/panel/update/status`
 - `GET /v1/panel/version`
+- `GET /v1/panel/update/check`
 
 ## Build cepat
 ```bash

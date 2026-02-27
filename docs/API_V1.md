@@ -181,6 +181,14 @@ Response:
 }
 ```
 
+### `GET /v1/panel/update/check`
+- Auth: admin
+- Cek commit remote branch updater dibanding commit panel yang sedang berjalan.
+- `status`:
+  - `up_to_date`
+  - `update_available`
+  - `unknown`
+
 ### `GET /v1/panel/update/status`
 - Auth: admin
 - Menampilkan state unit updater + potongan log terbaru dari journal.

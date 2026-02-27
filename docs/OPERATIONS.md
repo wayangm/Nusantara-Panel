@@ -124,10 +124,17 @@ curl -sS -X POST http://127.0.0.1:8080/v1/ssl/renew \
 ## 9. Update panel tanpa SSH manual build
 Via UI:
 - Login admin ke `http://<IP_VPS>:8080/`
+- Klik `GET /v1/panel/update/check` untuk cek update baru
 - Klik `POST /v1/panel/update`
 - Pantau `GET /v1/panel/update/status`
 
 Via API:
+```bash
+curl -sS http://127.0.0.1:8080/v1/panel/update/check \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+Trigger update:
 ```bash
 curl -sS -X POST http://127.0.0.1:8080/v1/panel/update \
   -H "Authorization: Bearer <TOKEN>"

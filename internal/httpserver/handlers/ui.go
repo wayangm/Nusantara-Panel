@@ -193,7 +193,9 @@ const uiHTML = `<!doctype html>
         <div id="updateState" class="pill">Unknown</div>
         <div class="bar"><i id="updateProgress"></i></div>
         <p id="updateMeta">Click status to load current updater state.</p>
+        <p id="updateCheckMeta">Check for remote updates before triggering.</p>
         <div class="row">
+          <button class="alt" id="btnUpdateCheck">GET /v1/panel/update/check</button>
           <button id="btnStartUpdate">POST /v1/panel/update</button>
           <button class="alt" id="btnUpdateStatus">GET /v1/panel/update/status</button>
         </div>
@@ -245,6 +247,7 @@ const uiHTML = `<!doctype html>
       var sitesList = document.getElementById('sitesList');
       var updateState = document.getElementById('updateState');
       var updateMeta = document.getElementById('updateMeta');
+      var updateCheckMeta = document.getElementById('updateCheckMeta');
       var updateProgress = document.getElementById('updateProgress');
       var btnStartUpdate = document.getElementById('btnStartUpdate');
       var token = localStorage.getItem('nusantara_token') || '';
@@ -259,6 +262,7 @@ const uiHTML = `<!doctype html>
           authStatus.textContent = 'Authenticated';
           authStatus.className = 'ok';
           fetchPanelVersion(true);
+          fetchUpdateCheck(true);
           fetchSites(true);
           fetchUpdateStatus(true);
           startUpdatePolling();
@@ -273,6 +277,7 @@ const uiHTML = `<!doctype html>
           stopSitesPolling();
           setUpdateState('Not authenticated', 'err', 0);
           updateMeta.textContent = 'Login as admin to use panel update.';
+          updateCheckMeta.textContent = 'Login as admin to check for updates.';
           sitesMeta.textContent = 'Login to load sites list.';
           sitesList.innerHTML = '<div class="site-row"><div class="muted">No data loaded.</div></div>';
         }
@@ -406,11 +411,36 @@ const uiHTML = `<!doctype html>
           ' build_time=' + (info.build_time || '-');
       }
 
+      function applyUpdateCheck(info) {
+        if (!info || typeof info !== 'object') return;
+        var status = info.status || 'unknown';
+        var note = info.note ? (' note=' + info.note) : '';
+        updateCheckMeta.textContent =
+          'check=' + status +
+          ' current=' + (info.current_commit || '-') +
+          ' remote=' + (info.remote_commit || '-') +
+          note;
+      }
+
       async function fetchPanelVersion(silent) {
         if (!token) return null;
         try {
           var info = await callAPI('/v1/panel/version', 'GET', null, true, !!silent);
           applyPanelVersion(info);
+          return info;
+        } catch (err) {
+          if (!silent) {
+            out.textContent = 'Request failed: ' + err;
+          }
+          return null;
+        }
+      }
+
+      async function fetchUpdateCheck(silent) {
+        if (!token) return null;
+        try {
+          var info = await callAPI('/v1/panel/update/check', 'GET', null, true, !!silent);
+          applyUpdateCheck(info);
           return info;
         } catch (err) {
           if (!silent) {
@@ -504,6 +534,11 @@ const uiHTML = `<!doctype html>
       });
       document.getElementById('btnPanelVersion').addEventListener('click', function () {
         fetchPanelVersion(false).catch(function (err) {
+          out.textContent = 'Request failed: ' + err;
+        });
+      });
+      document.getElementById('btnUpdateCheck').addEventListener('click', function () {
+        fetchUpdateCheck(false).catch(function (err) {
           out.textContent = 'Request failed: ' + err;
         });
       });

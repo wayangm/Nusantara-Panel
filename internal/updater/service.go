@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"nusantara/internal/buildinfo"
 )
 
 var (
@@ -61,6 +63,19 @@ type Status struct {
 	Failed               bool      `json:"failed"`
 	LastCheckedAt        time.Time `json:"last_checked_at"`
 	Logs                 []string  `json:"logs,omitempty"`
+}
+
+type CheckResult struct {
+	RepoURL         string    `json:"repo_url"`
+	Branch          string    `json:"branch"`
+	CurrentVersion  string    `json:"current_version"`
+	CurrentCommit   string    `json:"current_commit"`
+	RemoteCommit    string    `json:"remote_commit"`
+	Status          string    `json:"status"`
+	UpToDate        bool      `json:"up_to_date"`
+	UpdateAvailable bool      `json:"update_available"`
+	Note            string    `json:"note,omitempty"`
+	LastCheckedAt   time.Time `json:"last_checked_at"`
 }
 
 func NewService(enabled bool, cfg Config, logger *log.Logger) *Service {
@@ -198,6 +213,47 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 	return status, nil
 }
 
+func (s *Service) Check(ctx context.Context) (CheckResult, error) {
+	if !s.enabled {
+		return CheckResult{}, ErrDisabled
+	}
+	if err := s.validateConfig(); err != nil {
+		return CheckResult{}, err
+	}
+
+	remoteCommit, err := s.readRemoteCommit(ctx)
+	if err != nil {
+		return CheckResult{}, err
+	}
+
+	currentCommit := strings.ToLower(strings.TrimSpace(buildinfo.Commit))
+	currentVersion := strings.TrimSpace(buildinfo.Version)
+	result := CheckResult{
+		RepoURL:         s.cfg.RepoURL,
+		Branch:          s.cfg.Branch,
+		CurrentVersion:  currentVersion,
+		CurrentCommit:   currentCommit,
+		RemoteCommit:    remoteCommit,
+		Status:          "unknown",
+		UpToDate:        false,
+		UpdateAvailable: false,
+		LastCheckedAt:   time.Now().UTC(),
+	}
+
+	if !looksLikeCommit(currentCommit) {
+		result.Note = "current commit is unavailable, run update to refresh build metadata"
+		return result, nil
+	}
+	if strings.HasPrefix(remoteCommit, currentCommit) || strings.HasPrefix(currentCommit, remoteCommit) {
+		result.Status = "up_to_date"
+		result.UpToDate = true
+		return result, nil
+	}
+	result.Status = "update_available"
+	result.UpdateAvailable = true
+	return result, nil
+}
+
 func (s *Service) validateConfig() error {
 	if strings.TrimSpace(s.cfg.RepoURL) == "" || strings.TrimSpace(s.cfg.ScriptURL) == "" || strings.TrimSpace(s.cfg.Branch) == "" {
 		return fmt.Errorf("%w: empty updater repo/script/branch", ErrInvalidConfig)
@@ -317,6 +373,26 @@ func (s *Service) logs(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
+func (s *Service) readRemoteCommit(ctx context.Context) (string, error) {
+	ctxCheck, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	ref := "refs/heads/" + s.cfg.Branch
+	cmd := exec.CommandContext(ctxCheck, "git", "ls-remote", "--heads", s.cfg.RepoURL, ref)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("check remote commit: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	line := strings.TrimSpace(string(output))
+	if line == "" {
+		return "", fmt.Errorf("check remote commit: no ref found for branch %s", s.cfg.Branch)
+	}
+	fields := strings.Fields(line)
+	if len(fields) < 1 || !looksLikeCommit(fields[0]) {
+		return "", fmt.Errorf("check remote commit: invalid response")
+	}
+	return strings.ToLower(fields[0]), nil
+}
+
 func (s *Service) cleanupUnit(ctx context.Context) {
 	ctxCleanup, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -342,6 +418,19 @@ func shellQuote(v string) string {
 func parseInt(v string) int {
 	n, _ := strconv.Atoi(strings.TrimSpace(v))
 	return n
+}
+
+func looksLikeCommit(v string) bool {
+	if len(v) < 7 {
+		return false
+	}
+	for _, ch := range v {
+		if (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func summarizeStatus(st Status) string {

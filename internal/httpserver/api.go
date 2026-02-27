@@ -95,6 +95,7 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /v1/monitor/host", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleMonitorHost)))
 	mux.Handle("GET /v1/monitor/services", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleMonitorServices)))
 	mux.Handle("GET /v1/panel/version", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handlePanelVersion)))
+	mux.Handle("GET /v1/panel/update/check", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handlePanelUpdateCheck)))
 	mux.Handle("POST /v1/panel/update", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handleStartPanelUpdate)))
 	mux.Handle("GET /v1/panel/update/status", a.requireRole(store.RoleAdmin, http.HandlerFunc(a.handlePanelUpdateStatus)))
 }
@@ -623,6 +624,24 @@ func (a *API) handleStartPanelUpdate(w http.ResponseWriter, r *http.Request) {
 		"script_url": result.ScriptURL,
 	})
 	writeJSON(w, http.StatusAccepted, result)
+}
+
+func (a *API) handlePanelUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	if a.updater == nil {
+		writeError(w, http.StatusInternalServerError, "panel updater is not configured")
+		return
+	}
+	result, err := a.updater.Check(r.Context())
+	if err != nil {
+		switch {
+		case errors.Is(err, updater.ErrDisabled):
+			writeError(w, http.StatusBadRequest, "panel updater is disabled")
+		default:
+			writeError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (a *API) handlePanelUpdateStatus(w http.ResponseWriter, r *http.Request) {
