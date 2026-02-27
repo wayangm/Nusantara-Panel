@@ -271,6 +271,13 @@ const uiHTML = `<!doctype html>
         }
       }
 
+      function recoverAfterUpdateTriggerDrop() {
+        setUpdateState('Applying', 'run', 55);
+        updateMeta.textContent = 'Connection dropped while triggering update. Checking updater status...';
+        startUpdatePolling();
+        fetchUpdateStatus(true);
+      }
+
       async function callAPI(path, method, body, needAuth, silent) {
         var headers = { 'Content-Type': 'application/json' };
         if (needAuth && token) {
@@ -349,7 +356,8 @@ const uiHTML = `<!doctype html>
           }
           startUpdatePolling();
         } catch (err) {
-          out.textContent = 'Request failed: ' + err;
+          recoverAfterUpdateTriggerDrop();
+          out.textContent = 'Request interrupted (panel may restart during update trigger). Auto-checking updater status...';
         }
       });
       document.getElementById('btnUpdateStatus').addEventListener('click', function () {
