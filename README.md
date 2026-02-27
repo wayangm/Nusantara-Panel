@@ -169,7 +169,8 @@ Sudah tersedia:
   - render `server` config ke `sites-available`,
   - link ke `sites-enabled`,
   - `nginx -t`,
-  - `systemctl reload nginx`.
+  - `systemctl reload nginx`,
+  - auto bootstrap `index` default untuk runtime `php`/`static` jika root path masih kosong (mencegah 403 saat awal deploy).
 - deprovision Nginx untuk `delete site`:
   - unlink dari `sites-enabled`,
   - hapus config `sites-available`,
@@ -186,6 +187,7 @@ Sudah tersedia:
 - audit log query.
 - monitoring host + probe status service Linux via `systemctl is-active`.
 - persistence lokal berbasis file JSON di `NUSANTARA_DB_PATH`.
+- UI preview mendukung alur SSL dasar (`/v1/ssl/issue` dan `/v1/ssl/renew`) tanpa SSH.
 
 Catatan keamanan:
 - hashing password menggunakan bcrypt.

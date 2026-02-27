@@ -90,6 +90,7 @@ Catatan:
 - Endpoint ini mengembalikan `site` dengan status awal `provisioning`.
 - Eksekusi provisioning berjalan async lewat job worker.
 - Pantau progress via `GET /v1/jobs/{job_id}` dan `GET /v1/sites/{site_id}`.
+- Jika `root_path` belum memiliki file index, panel akan membuat file bootstrap default untuk runtime `php`/`static`.
 
 ### `GET /v1/sites/{site_id}`
 - Auth: admin

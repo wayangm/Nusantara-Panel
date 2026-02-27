@@ -30,6 +30,8 @@ curl -sS -X POST http://127.0.0.1:8080/v1/sites \
   -H "Content-Type: application/json" \
   -d '{"domain":"example.com","root_path":"/var/www/example","runtime":"php"}'
 ```
+Catatan:
+- Untuk runtime `php`/`static`, jika root masih kosong maka panel akan membuat file index bootstrap otomatis agar site tidak langsung 403.
 
 ## 5. Hapus site (async deprovision)
 ```bash

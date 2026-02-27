@@ -144,6 +144,7 @@ const uiHTML = `<!doctype html>
       cursor: pointer;
       white-space: nowrap;
     }
+    .mini.alt { background: #334155; margin-bottom: 6px; }
     .muted { color: #64748b; font-size: 12px; }
   </style>
 </head>
@@ -220,6 +221,19 @@ const uiHTML = `<!doctype html>
       </section>
 
       <section class="card">
+        <h2>SSL Manager</h2>
+        <p>Issue or renew HTTPS certificate (Let's Encrypt).</p>
+        <label>Domain</label>
+        <input id="sslDomain" placeholder="example.com">
+        <label>Email</label>
+        <input id="sslEmail" placeholder="admin@example.com">
+        <div class="row">
+          <button id="btnIssueSSL">POST /v1/ssl/issue</button>
+          <button class="alt" id="btnRenewSSL">POST /v1/ssl/renew</button>
+        </div>
+      </section>
+
+      <section class="card">
         <h2>Sites Explorer</h2>
         <p id="sitesMeta">Login to load sites list.</p>
         <div class="row">
@@ -245,6 +259,10 @@ const uiHTML = `<!doctype html>
       var versionMeta = document.getElementById('versionMeta');
       var sitesMeta = document.getElementById('sitesMeta');
       var sitesList = document.getElementById('sitesList');
+      var domainInput = document.getElementById('domain');
+      var rootPathInput = document.getElementById('rootPath');
+      var sslDomainInput = document.getElementById('sslDomain');
+      var sslEmailInput = document.getElementById('sslEmail');
       var updateState = document.getElementById('updateState');
       var updateMeta = document.getElementById('updateMeta');
       var updateCheckMeta = document.getElementById('updateCheckMeta');
@@ -253,6 +271,7 @@ const uiHTML = `<!doctype html>
       var token = localStorage.getItem('nusantara_token') || '';
       var updatePollTimer = null;
       var sitesPollTimer = null;
+      var rootPathDirty = false;
 
       function setToken(next) {
         token = (next || '').trim();
@@ -291,6 +310,16 @@ const uiHTML = `<!doctype html>
 
       function pretty(data) {
         try { return JSON.stringify(data, null, 2); } catch (_) { return String(data); }
+      }
+
+      function normalizeDomain(value) {
+        return String(value || '').trim().toLowerCase().replace(/\.$/, '');
+      }
+
+      function suggestRootPath(domain) {
+        var clean = normalizeDomain(domain);
+        if (!clean) return '/var/www/example.com/public';
+        return '/var/www/' + clean + '/public';
       }
 
       function startUpdatePolling() {
@@ -345,6 +374,7 @@ const uiHTML = `<!doctype html>
                 '<div class="' + badgeClass + '">' + escapeHtml(status || 'unknown') + '</div>' +
               '</div>' +
               '<div>' +
+                '<button class="mini alt" data-ssl-domain="' + escapeHtml(site.domain) + '">Use SSL</button>' +
                 '<button class="mini" data-delete-site="' + escapeHtml(site.id) + '">Delete</button>' +
               '</div>' +
             '</div>';
@@ -457,6 +487,9 @@ const uiHTML = `<!doctype html>
           var items = (payload && payload.items) || [];
           renderSites(items);
           sitesMeta.textContent = 'Sites loaded: ' + items.length + ' (auto-refresh every 8s)';
+          if (items.length > 0 && !normalizeDomain(sslDomainInput.value)) {
+            sslDomainInput.value = normalizeDomain(items[0].domain);
+          }
           return payload;
         } catch (err) {
           if (!silent) {
@@ -571,12 +604,30 @@ const uiHTML = `<!doctype html>
 
       document.getElementById('btnCreateSite').addEventListener('click', function () {
         callAPI('/v1/sites', 'POST', {
-          domain: document.getElementById('domain').value,
-          root_path: document.getElementById('rootPath').value,
+          domain: domainInput.value,
+          root_path: rootPathInput.value,
           runtime: document.getElementById('runtime').value
         }, true).then(function () {
+          if (!normalizeDomain(sslDomainInput.value)) {
+            sslDomainInput.value = normalizeDomain(domainInput.value);
+          }
           fetchSites(true);
         }).catch(function (err) {
+          out.textContent = 'Request failed: ' + err;
+        });
+      });
+
+      document.getElementById('btnIssueSSL').addEventListener('click', function () {
+        callAPI('/v1/ssl/issue', 'POST', {
+          domain: sslDomainInput.value,
+          email: sslEmailInput.value
+        }, true).catch(function (err) {
+          out.textContent = 'Request failed: ' + err;
+        });
+      });
+
+      document.getElementById('btnRenewSSL').addEventListener('click', function () {
+        callAPI('/v1/ssl/renew', 'POST', {}, true).catch(function (err) {
           out.textContent = 'Request failed: ' + err;
         });
       });
@@ -584,6 +635,12 @@ const uiHTML = `<!doctype html>
       sitesList.addEventListener('click', function (evt) {
         var target = evt.target;
         if (!target || !target.getAttribute) return;
+        var sslDomain = target.getAttribute('data-ssl-domain');
+        if (sslDomain) {
+          sslDomainInput.value = normalizeDomain(sslDomain);
+          out.textContent = 'SSL domain selected: ' + sslDomainInput.value;
+          return;
+        }
         var siteID = target.getAttribute('data-delete-site');
         if (!siteID) return;
         if (!window.confirm('Delete site ' + siteID + '?')) return;
@@ -594,6 +651,17 @@ const uiHTML = `<!doctype html>
         }).catch(function (err) {
           out.textContent = 'Request failed: ' + err;
         });
+      });
+
+      domainInput.addEventListener('input', function () {
+        var domain = normalizeDomain(domainInput.value);
+        if (!rootPathDirty) {
+          rootPathInput.value = suggestRootPath(domain);
+        }
+      });
+
+      rootPathInput.addEventListener('input', function () {
+        rootPathDirty = true;
       });
 
       setToken(token);

@@ -1,4 +1,4 @@
-﻿package provision
+package provision
 
 import (
 	"context"
@@ -54,6 +54,9 @@ func (p *NginxProvisioner) ProvisionSite(ctx context.Context, site store.Site) e
 	}
 	if err := os.MkdirAll(site.RootPath, 0o755); err != nil {
 		return fmt.Errorf("create site root: %w", err)
+	}
+	if err := ensureRuntimeBootstrap(site); err != nil {
+		return fmt.Errorf("bootstrap site root: %w", err)
 	}
 
 	confName := sanitizeConfName(site.Domain) + ".conf"
@@ -278,3 +281,99 @@ func (p *NginxProvisioner) logf(format string, args ...any) {
 	}
 }
 
+func ensureRuntimeBootstrap(site store.Site) error {
+	root := strings.TrimSpace(site.RootPath)
+	if root == "" {
+		return errors.New("empty root path")
+	}
+
+	runtimeName := strings.ToLower(strings.TrimSpace(site.Runtime))
+	switch runtimeName {
+	case "php":
+		exists, err := hasAnyIndex(root)
+		if err != nil || exists {
+			return err
+		}
+		indexPath := filepath.Join(root, "index.php")
+		return writeFileIfNotExists(indexPath, []byte(defaultPHPIndex(site.Domain)))
+	case "static":
+		exists, err := hasAnyIndex(root)
+		if err != nil || exists {
+			return err
+		}
+		indexPath := filepath.Join(root, "index.html")
+		return writeFileIfNotExists(indexPath, []byte(defaultStaticIndex(site.Domain)))
+	default:
+		return nil
+	}
+}
+
+func hasAnyIndex(root string) (bool, error) {
+	for _, name := range []string{"index.php", "index.html", "index.htm"} {
+		p := filepath.Join(root, name)
+		_, err := os.Stat(p)
+		if err == nil {
+			return true, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return false, err
+		}
+	}
+	return false, nil
+}
+
+func writeFileIfNotExists(path string, content []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return nil
+		}
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(content)
+	return err
+}
+
+func defaultStaticIndex(domain string) string {
+	label := strings.TrimSpace(domain)
+	if label == "" {
+		label = "site"
+	}
+	return fmt.Sprintf(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>%s</title>
+</head>
+<body>
+  <h1>%s is live</h1>
+  <p>Provisioned by Nusantara Panel.</p>
+</body>
+</html>
+`, label, label)
+}
+
+func defaultPHPIndex(domain string) string {
+	label := strings.TrimSpace(domain)
+	if label == "" {
+		label = "site"
+	}
+	return fmt.Sprintf(`<?php
+header('Content-Type: text/html; charset=utf-8');
+?>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>%s</title>
+</head>
+<body>
+  <h1>%s is live</h1>
+  <p>Provisioned by Nusantara Panel (PHP runtime).</p>
+</body>
+</html>
+`, label, label)
+}
