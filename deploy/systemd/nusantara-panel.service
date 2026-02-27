@@ -1,0 +1,23 @@
+[Unit]
+Description=Nusantara Panel Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/var/lib/nusantara-panel
+EnvironmentFile=-/etc/nusantara-panel/nusantara-panel.env
+ExecStart=/usr/local/bin/nusantarad
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/nusantara-panel /var/log/nusantara-panel /var/backups/nusantara-panel /etc/nginx/sites-available /etc/nginx/sites-enabled /var/www
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+

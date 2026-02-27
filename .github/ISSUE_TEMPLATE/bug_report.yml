@@ -1,0 +1,53 @@
+name: Bug report
+description: Laporkan bug yang mempengaruhi perilaku Nusantara Panel.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Isi detail sejelas mungkin agar reproduksi cepat dilakukan.
+  - type: input
+    id: version
+    attributes:
+      label: Versi
+      description: Commit/tag yang digunakan.
+      placeholder: v0.1.0 atau commit hash
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, kernel, dan runtime.
+      placeholder: Ubuntu 22.04, kernel 5.15
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Langkah reproduksi
+      description: Urutan langkah untuk memunculkan bug.
+      placeholder: |
+        1. Jalankan ...
+        2. Panggil endpoint ...
+        3. Lihat error ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Hasil yang diharapkan
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Hasil aktual
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log terkait
+      description: Potongan log/error message yang relevan.

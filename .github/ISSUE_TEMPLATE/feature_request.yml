@@ -1,0 +1,34 @@
+name: Feature request
+description: Ajukan fitur baru untuk Nusantara Panel.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: input
+    id: problem
+    attributes:
+      label: Problem statement
+      description: Masalah operasional apa yang ingin diselesaikan?
+      placeholder: Contoh: provisioning multi-site masih terlalu manual
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Solusi yang diusulkan
+      description: Jelaskan API/UX/flow yang diinginkan.
+      placeholder: |
+        Endpoint baru ...
+        Perubahan workflow ...
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Dampak
+      description: Dampak ke keamanan, performa, atau operasional.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatif yang sudah dipertimbangkan
